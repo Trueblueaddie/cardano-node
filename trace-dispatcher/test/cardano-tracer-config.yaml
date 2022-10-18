@@ -1,0 +1,9 @@
+
+networkMagic: 764824073
+network:
+  tag: AcceptAt
+  contents: "/tmp/tracer.sock"
+logging:
+- logRoot: "/tmp/cardano-forwarder-test-logs"
+  logMode: FileMode
+  logFormat: ForMachine
