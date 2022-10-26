@@ -4,7 +4,13 @@
 
 ### node changes
 
-None
+- New P2P topology file format, see [issue #4563][#4563] or the [config
+  files][understanding-config-files] documentation.  The old p2p topology
+  format will be supported for next two major releases of the node (the last
+  major version which will support it is `1.37`).
+
+[#4563]: https://github.com/input-output-hk/cardano-node/issues/4563
+[understanding-config-files]: https://github.com/input-output-hk/cardano-node/blob/master/doc/getting-started/understanding-config-files.md
 
 ### consensus changes
 
