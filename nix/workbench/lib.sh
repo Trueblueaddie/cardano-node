@@ -23,8 +23,10 @@ json_compact_prettify()
 {
     for f in "$@"
     do jq_fmutate "$f" --raw-input --raw-output --slurp \
-           'gsub("\n      +";"")|gsub("\n    ]";"]")|gsub(",\"";",\n          \"")'
+           'gsub("\n      +";"")|gsub("\n    ]";"]")|gsub(",\"";",\n          \"")' &
     done
+
+    wait
 }
 
 jscompact()

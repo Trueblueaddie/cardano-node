@@ -153,7 +153,7 @@ mapRenderCDF :: forall p a. RenderCDFs a p
 mapRenderCDF fieldSelr centiSelr fSampleProps x =
   fields                                    -- list of fields
   <&> renderFieldCentiles x cdfSamplesProps -- for each field, list of per-sample lists of properties
-  & ([renderCentiles 6 centiles] :)
+  & (transpose [renderCentiles 6 centiles] :)
   & transpose                               -- for each sample, list of per-field lists of properties
   & fmap (fmap $ T.intercalate " ")
  where
