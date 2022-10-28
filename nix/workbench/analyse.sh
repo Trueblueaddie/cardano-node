@@ -340,6 +340,7 @@ case "$op" in
 
         verbose "analysis | locli" "$(with_color reset ${locli_rts_args[@]}) $(colorise "${ops_final[@]}")"
         time locli "${locli_rts_args[@]}" "${ops_final[@]}"
+        json_compact_prettify $(ls $adir/*.json | grep -v 'flt.json$')
         ;;
 
     multi-call )

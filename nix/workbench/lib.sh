@@ -19,6 +19,19 @@ jq_check_json() {
     jq '.' "$1" >/dev/null
 }
 
+json_compact_prettify()
+{
+    for f in "$@"
+    do jq_fmutate "$f" --raw-input --raw-output --slurp \
+           'gsub("\n      +";"")|gsub("\n    ]";"]")|gsub(",\"";",\n          \"")'
+    done
+}
+
+jscompact()
+{
+    json_compact_prettify "$@"
+}
+
 helptopcmd() {
     local topcmd=$1 cmd=$2; shift 2
     white $topcmd
