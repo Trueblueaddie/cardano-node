@@ -38,11 +38,12 @@ import Data.Accum (zeroUTCTime)
 
 type Text = ShortText
 
-runLiftLogObjects :: [JsonLogfile] -> Maybe HostDeduction
+runLiftLogObjects :: [JsonLogfile] -> Maybe HostDeduction -> Bool -> [LOAnyType]
                   -> ExceptT LText.Text IO [(JsonLogfile, [LogObject])]
-runLiftLogObjects fs (fmap hostDeduction -> mHostDed) = liftIO $
+runLiftLogObjects fs (fmap hostDeduction -> mHostDed) okDErr anyOks = liftIO $ do
   forConcurrently fs
-    (\f -> (f,) . fmap (setLOhost f mHostDed) <$> readLogObjectStream (unJsonLogfile f))
+    (\f -> (f,) . fmap (setLOhost f mHostDed) <$> readLogObjectStream (unJsonLogfile f) okDErr anyOks)
+  progress "logs" (Q $ printf "%d log files parsed" $ length fs)
  where
    setLOhost :: JsonLogfile -> Maybe (JsonLogfile -> Host) -> LogObject -> LogObject
    setLOhost _   Nothing lo = lo
@@ -51,14 +52,30 @@ runLiftLogObjects fs (fmap hostDeduction -> mHostDed) = liftIO $
    -- joinT :: (IO a, IO b) -> IO (a, b)
    -- joinT (a, b) = (,) <$> a <*> b
 
-readLogObjectStream :: FilePath -> IO [LogObject]
-readLogObjectStream f =
+readLogObjectStream :: FilePath -> Bool -> [LOAnyType] -> IO [LogObject]
+readLogObjectStream f okDErr anyOks =
   LBS.readFile f
     <&>
-    fmap (either (LogObject zeroUTCTime "Cardano.Analysis.DecodeError" "DecodeError" "" (TId "0") . LODecodeError)
+    (if okDErr then id else
+        filter ((\case
+                    LODecodeError err -> error
+                      (printf "Decode error while parsing %s -- %s" f (show err))
+                    _ -> True)
+               . loBody)) .
+    (filter ((\case
+                 LOAny laty obj ->
+                   if elem laty anyOks then True else
+                   error
+                   (printf "Unexpected LOAny while parsing %s -- %s: %s" f (show laty) (show obj))
+                 _ -> True)
+            . loBody)) .
+    filter ((/= eofError) . loBody) .
+    fmap (either (LogObject zeroUTCTime "Cardano.Analysis.DecodeError" "DecodeError" "" (TId "0") . LODecodeError . Text.fromText . LText.pack)
                  id
           . AE.eitherDecode)
     . LBS.split (fromIntegral $ fromEnum '\n')
+ where
+   eofError = LODecodeError "Error in $: not enough input"
 
 data LogObject
   = LogObject
@@ -156,14 +173,12 @@ interpreters = map3ple Map.fromList . unzip3 . fmap ent $
     \v -> case ( KeyMap.lookup "risingEdge" v
                , KeyMap.lookup "blockingRead" v
                , KeyMap.lookup "rollBackTo" v) of
-            (Just (Bool False), _, _) -> pure $ LOAny v -- Skip the falling edge
-            (_, Just (Bool False), _) -> pure $ LOAny v -- Skip the non-blocking reads
-            (_, _, Just _)            -> pure $ LOAny v -- Skip rollbacks
+            (Just (Bool False), _, _) -> pure $ LOAny LAFallingEdge v
+            (_, Just (Bool False), _) -> pure $ LOAny LANonBlocking v
+            (_, _, Just _)            -> pure $ LOAny LARollback    v
             -- Should be either rising edge+rollforward, or legacy:
             _ -> do
-              blockLegacy <- do
-                tip <- v .:? "tip"
-                forM tip $ \x -> x .: "block"
+              blockLegacy <- v .:? "block"
               block       <- v .:? "addBlock"
               pure $
                 LOChainSyncServerSendHeader
@@ -313,10 +328,19 @@ data LOBody
   -- Generator:
   | LOGeneratorSummary !Bool !Word64 !NominalDiffTime (Vector Double)
   -- Everything else:
-  | LOAny !Object
-  | LODecodeError !String
-  deriving (Generic, Show)
+  | LOAny !LOAnyType !Object
+  | LODecodeError !ShortText
+  deriving (Eq, Generic, Show)
   deriving anyclass NFData
+
+data LOAnyType
+  = LAFallingEdge
+  | LANonBlocking
+  | LARollback
+  | LANoInterpreter
+  deriving (Eq, Generic, NFData, Read, Show, ToJSON)
+
+deriving instance Eq ResourceStats
 
 instance ToJSON LOBody
 
@@ -344,7 +368,7 @@ instance FromJSON LogObject where
                            & fromMaybe kind)                        (snd3 interpreters)
            <|> Map.lookup  kind                                     (fst3 interpreters) of
             Just interp -> interp unwrapped
-            Nothing -> pure $ LOAny unwrapped
+            Nothing -> pure $ LOAny LANoInterpreter unwrapped
    where
      unwrap :: Text -> Text -> Object -> Parser (Object, Text)
      unwrap wrappedKeyPred unwrapKey v = do

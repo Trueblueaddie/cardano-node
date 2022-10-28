@@ -37,6 +37,9 @@ usage_analyse() {
     $(helpopt --no-filters)       Disable filters implied by the profile
     $(helpopt --filter-reasons)   Chain timeline: explain per-block filter-out reasons
     $(helpopt --chain-errors)     Chain timeline: show per-block anomalies
+    $(helpopt --ok-loany)         [MULTI] Allow a particular LOAnyType.
+                         Default:  ${analysis_allowed_loanys[*]}
+    $(helpopt --lodecodeerror-ok) Allow non-EOF LODecodeError logobjects
     $(helpopt --dump-logobjects)  Dump the intermediate data: lifted log objects
     $(helpopt --dump-machviews)   Blockprop: dump machine views (JSON)
     $(helpopt --dump-chain)       Blockprop: dump chain (JSON)
@@ -47,11 +50,16 @@ usage_analyse() {
     $(helpopt --refresh)          Redo initial log filtering
 EOF
 }
+analysis_allowed_loanys=(
+    'LAFallingEdge'
+    'LANonBlocking'
+    'LARollback'
+)
 
 analyse() {
 local filters=() filter_exprs=() filter_reasons= chain_errors= aws= sargs=() unfiltered= perf_omit_hosts=()
 local dump_logobjects= dump_machviews= dump_chain= dump_slots_raw= dump_slots=
-local multi_aspect='--inter-cdf' refresh= rtsmode=
+local multi_aspect='--inter-cdf' refresh= rtsmode= locli_args=()
 
 progress "analyse" "args:  $(yellow $*)"
 while test $# -gt 0
@@ -62,21 +70,23 @@ do case "$1" in
        --filter-slot-expr | -fsex )  sargs+=($1 "$2"); filter_exprs+=('{ "tag":"CSlot" , "contents": '"$2"'}'); shift;;
        --no-filters | --unfiltered | -u )
                                   sargs+=($1);    analysis_set_filters ""; unfiltered='true';;
-       --filter-reasons  | -fr )      sargs+=($1);    filter_reasons='true';;
-       --chain-errors    | -er )      sargs+=($1);    chain_errors='true';;
-       --dump-logobjects | -lo )      sargs+=($1);    dump_logobjects='true';;
-       --dump-machviews  | -mw )      sargs+=($1);    dump_machviews='true';;
-       --dump-chain      | -c )       sargs+=($1);    dump_chain='true';;
-       --dump-slots-raw  | -sr )      sargs+=($1);    dump_slots_raw='true';;
-       --dump-slots      | -s )       sargs+=($1);    dump_slots='true';;
-       --multi-overall )              sargs+=($1);    multi_aspect='--overall';;
-       --multi-inter-cdf )            sargs+=($1);    multi_aspect='--inter-cdf';;
-       --refresh | -re | -r )         sargs+=($1);    refresh='true';;
-       --rtsmode-aws | --aws )        sargs+=($1);    rtsmode='aws';;
-       --rtsmode-lomem | --lomem )    sargs+=($1);    rtsmode='lomem';;
-       --rtsmode-hipar )              sargs+=($1);    rtsmode='hipar';;
-       --perf-omit-host )             sargs+=($1 "$2"); perf_omit_hosts+=($2); shift;;
-       --trace )                      sargs+=($1);    set -x;;
+       --filter-reasons  | -fr )   sargs+=($1);    filter_reasons='true';;
+       --chain-errors    | -cer )  sargs+=($1);    chain_errors='true';;
+       --loany-ok         | -lok ) sargs+=($1);    locli_args+=(--loany-ok);;
+       --lodecodeerror-ok | -dok ) sargs+=($1);    locli_args+=(--lodecodeerror-ok);;
+       --dump-logobjects | -lo )   sargs+=($1);    dump_logobjects='true';;
+       --dump-machviews  | -mw )   sargs+=($1);    dump_machviews='true';;
+       --dump-chain      | -c )    sargs+=($1);    dump_chain='true';;
+       --dump-slots-raw  | -sr )   sargs+=($1);    dump_slots_raw='true';;
+       --dump-slots      | -s )    sargs+=($1);    dump_slots='true';;
+       --multi-overall )           sargs+=($1);    multi_aspect='--overall';;
+       --multi-inter-cdf )         sargs+=($1);    multi_aspect='--inter-cdf';;
+       --refresh | -re | -r )      sargs+=($1);    refresh='true';;
+       --rtsmode-aws | --aws )     sargs+=($1);    rtsmode='aws';;
+       --rtsmode-lomem | --lomem ) sargs+=($1);    rtsmode='lomem';;
+       --rtsmode-hipar )           sargs+=($1);    rtsmode='hipar';;
+       --perf-omit-host )          sargs+=($1 "$2"); perf_omit_hosts+=($2); shift;;
+       --trace )                   sargs+=($1);    set -x;;
        * ) break;; esac; shift; done
 
 if test -z "$rtsmode"
@@ -87,9 +97,9 @@ then if curl --connect-timeout 0.5 http://169.254.169.254/latest/meta-data >/dev
 echo "{ \"rtsmode\": \"$rtsmode\" }"
 case "$rtsmode" in
     aws )   ## Work around the odd parallelism bug killing performance on AWS:
-            locli_rts_args=(+RTS -N1 -A128M -RTS);;
-    lomem ) locli_rts_args=(+RTS -N3 -A8M -RTS);;
-    hipar ) locli_rts_args=();;
+            locli_args+=(+RTS -N1 -A128M -RTS);;
+    lomem ) locli_args+=(+RTS -N3 -A8M -RTS);;
+    hipar ) locli_args+=();;
     * )     fail "unknown rtsmode: $rtsmode";;
 esac
 
@@ -314,7 +324,7 @@ case "$op" in
 
         local v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 va vb vc vd ve vf vg vh vi vj vk vl vm vn vo
         v0=( $* )
-        v1=("${v0[@]/#logs/                 'unlog' --host-from-log-filename ${logfiles[*]/#/--log }  }")
+        v1=("${v0[@]/#logs/                 'unlog' --host-from-log-filename ${analysis_allowed_loanys[*]/#/--ok-loany } ${logfiles[*]/#/--log }  }")
         v2=("${v1[@]/#context/              'meta-genesis' --run-metafile    \"$dir\"/meta.json
                                                          --shelley-genesis \"$dir\"/genesis-shelley.json }")
         v5=("${v2[@]/#rebuild-chain/        'rebuild-chain'                  ${filters[@]}}")
@@ -338,9 +348,9 @@ case "$op" in
         for v in "${vl[@]}"
         do eval ops_final+=($v); done
 
-        verbose "analysis | locli" "$(with_color reset ${locli_rts_args[@]}) $(colorise "${ops_final[@]}")"
-        time locli "${locli_rts_args[@]}" "${ops_final[@]}"
-        json_compact_prettify $(ls $adir/*.json | grep -v 'flt.json$')
+        verbose "analysis | locli" "$(with_color reset ${locli_args[@]}) $(colorise "${ops_final[@]}")"
+        time locli "${locli_args[@]}" "${ops_final[@]}"
+        json_compact_prettify $(ls $adir/*.json | grep -v '\.flt\.json$')
         ;;
 
     multi-call )

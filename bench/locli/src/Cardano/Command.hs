@@ -42,6 +42,55 @@ newtype Command
   = ChainCommand [ChainCommand]
   deriving Show
 
+data ChainCommand
+  = ListLogobjectKeys       TextOutputFile
+  | ListLogobjectKeysLegacy TextOutputFile
+
+  |        MetaGenesis      (JsonInputFile RunPartial) (JsonInputFile Genesis)
+
+  |        Unlog            [JsonLogfile] (Maybe HostDeduction) Bool [LOAnyType]
+  |        DumpLogObjects
+
+  |        BuildMachViews
+  |         DumpMachViews
+  |         ReadMachViews   [JsonLogfile]
+
+  |         RebuildChain    [JsonFilterFile] [ChainFilter]
+  |            DumpChain    (JsonOutputFile [BlockEvents])
+  |            ReadChain    (JsonInputFile [BlockEvents])
+  |        TimelineChain    TextOutputFile [RTComments BlockEvents]
+
+  |         CollectSlots    [JsonLogfile]
+  |            DumpSlotsRaw
+  |          FilterSlots    [JsonFilterFile] [ChainFilter]
+  |            DumpSlots
+  |        TimelineSlots
+
+  |      ComputePropagation
+  |       RenderPropagation RenderFormat TextOutputFile PropSubset
+  |        ReadPropagations [JsonInputFile BlockPropOne]
+
+  | ComputeMultiPropagation
+  |  RenderMultiPropagation RenderFormat TextOutputFile PropSubset CDF2Aspect
+
+  |         ComputeMachPerf
+  |          RenderMachPerf RenderFormat PerfSubset
+
+  |      ComputeClusterPerf
+  |       RenderClusterPerf RenderFormat TextOutputFile PerfSubset
+
+  |    ReadMultiClusterPerf [JsonInputFile MultiClusterPerf]
+  | ComputeMultiClusterPerf
+  |  RenderMultiClusterPerf RenderFormat TextOutputFile PerfSubset CDF2Aspect
+
+  |             Compare     InputDir (Maybe TextInputFile) TextOutputFile
+                            [( JsonInputFile RunPartial
+                             , JsonInputFile Genesis
+                             , JsonInputFile ClusterPerf
+                             , JsonInputFile BlockPropOne)]
+
+  deriving Show
+
 parseChainCommand :: Parser ChainCommand
 parseChainCommand =
   subparser (mconcat [ commandGroup "Common data:  logobject keys, run metafile & genesis"
@@ -64,7 +113,11 @@ parseChainCommand =
            (optJsonLogfile    "log"             "JSON log stream")
        <*> optional
            (parseHostDeduction "host-from-log-filename"
-                                                "Derive hostname from log filename: logs-HOSTNAME.*"))
+                                                "Derive hostname from log filename: logs-HOSTNAME.*")
+       <*> Opt.flag False True (Opt.long "lodecodeerror-ok"
+                                    <> Opt.help "Allow non-EOF LODecodeError logobjects")
+       <*> many
+           (optLOAnyType      "ok-loany"        "[MULTI] Allow a particular LOAnyType"))
    , op "dump-logobjects" "Dump lifted log object streams, alongside input files"
      (DumpLogObjects & pure)
    ]) <|>
@@ -186,6 +239,13 @@ parseChainCommand =
      <> Opt.help desc
      )
 
+   optLOAnyType :: String -> String -> Parser LOAnyType
+   optLOAnyType opt desc =
+     Opt.option Opt.auto
+     ( Opt.long opt
+       <> Opt.help desc
+       <> Opt.metavar "LOAnyType" )
+
 parseRTCommentsBP :: Parser (RTComments BlockEvents)
 parseRTCommentsBP =
   [ Opt.flag' BEErrors     (Opt.long "chain-errors"   <> Opt.help "Show per-block anomalies")
@@ -223,55 +283,6 @@ writerOpts ctor desc = enumFromTo minBound maxBound
                        & \case
                            (x:xs) -> foldl (<|>) x xs
                            [] -> error "Crazy world."
-
-data ChainCommand
-  = ListLogobjectKeys       TextOutputFile
-  | ListLogobjectKeysLegacy TextOutputFile
-
-  |        MetaGenesis      (JsonInputFile RunPartial) (JsonInputFile Genesis)
-
-  |        Unlog            [JsonLogfile] (Maybe HostDeduction)
-  |        DumpLogObjects
-
-  |        BuildMachViews
-  |         DumpMachViews
-  |         ReadMachViews   [JsonLogfile]
-
-  |         RebuildChain    [JsonFilterFile] [ChainFilter]
-  |            DumpChain    (JsonOutputFile [BlockEvents])
-  |            ReadChain    (JsonInputFile [BlockEvents])
-  |        TimelineChain    TextOutputFile [RTComments BlockEvents]
-
-  |         CollectSlots    [JsonLogfile]
-  |            DumpSlotsRaw
-  |          FilterSlots    [JsonFilterFile] [ChainFilter]
-  |            DumpSlots
-  |        TimelineSlots
-
-  |      ComputePropagation
-  |       RenderPropagation RenderFormat TextOutputFile PropSubset
-  |        ReadPropagations [JsonInputFile BlockPropOne]
-
-  | ComputeMultiPropagation
-  |  RenderMultiPropagation RenderFormat TextOutputFile PropSubset CDF2Aspect
-
-  |         ComputeMachPerf
-  |          RenderMachPerf RenderFormat PerfSubset
-
-  |      ComputeClusterPerf
-  |       RenderClusterPerf RenderFormat TextOutputFile PerfSubset
-
-  |    ReadMultiClusterPerf [JsonInputFile MultiClusterPerf]
-  | ComputeMultiClusterPerf
-  |  RenderMultiClusterPerf RenderFormat TextOutputFile PerfSubset CDF2Aspect
-
-  |             Compare     InputDir (Maybe TextInputFile) TextOutputFile
-                            [( JsonInputFile RunPartial
-                             , JsonInputFile Genesis
-                             , JsonInputFile ClusterPerf
-                             , JsonInputFile BlockPropOne)]
-
-  deriving Show
 
 data State
   = State
@@ -326,8 +337,8 @@ runChainCommand s
   pure s { sRun = Just run }
 
 runChainCommand s
-  c@(Unlog logs mHostDed) = do
-  los <- runLiftLogObjects logs mHostDed
+  c@(Unlog logs mHostDed okDErr okAny) = do
+  los <- runLiftLogObjects logs mHostDed okDErr okAny
          & firstExceptT (CommandError c)
   pure s { sObjLists = Just los }
 
