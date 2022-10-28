@@ -158,12 +158,11 @@ readAssociatedObjects ident fs = firstExceptT T.pack . newExceptT . fmap sequenc
         pure (jf, x)
 
 dumpAssociatedObjectStreams :: ToJSON a => String -> [(JsonLogfile, [a])] -> ExceptT Text IO ()
-dumpAssociatedObjectStreams ident xss = liftIO $ do
+dumpAssociatedObjectStreams ident xss = liftIO $
   flip mapConcurrently_ xss $
     \(JsonLogfile f, xs) -> do
       withFile (replaceExtension f $ ident <> ".json") WriteMode $ \hnd -> do
         forM_ xs $ LBS.hPutStrLn hnd . encode
-  progress ident (Q $ printf "%d associated streams dumped" $ length xss)
 
 dumpText :: String -> [Text] -> TextOutputFile -> ExceptT Text IO ()
 dumpText ident xs (TextOutputFile f) = liftIO $ do
@@ -172,12 +171,11 @@ dumpText ident xs (TextOutputFile f) = liftIO $ do
     forM_ xs $ hPutStrLn hnd
 
 dumpAssociatedTextStreams :: String -> [(JsonLogfile, [Text])] -> ExceptT Text IO ()
-dumpAssociatedTextStreams ident xss = liftIO $ do
+dumpAssociatedTextStreams ident xss = liftIO $
   flip mapConcurrently_ xss $
     \(JsonLogfile f, xs) -> do
       withFile (replaceExtension f $ ident <> ".txt") WriteMode $ \hnd -> do
         forM_ xs $ hPutStrLn hnd
-  progress ident (Q $ printf "%d associated streams dumped" $ length xss)
 
 spans :: forall a. (a -> Bool) -> [a] -> [Vector a]
 spans f = go []

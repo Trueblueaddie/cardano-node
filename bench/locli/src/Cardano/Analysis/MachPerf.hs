@@ -126,22 +126,22 @@ runSlotFilters ::
   -> [ChainFilter]
   -> [(JsonLogfile, [SlotStats a])]
   -> IO (DataDomain SlotNo, [(JsonLogfile, [SlotStats a])])
-runSlotFilters Run{genesis} flts slots = do
-  forM_ flts $
-    progress "filter" . Q . show
-  filtered <- mapConcurrentlyPure (fmap $ filterSlotStats flts) slots
-  let samplePre  =    slots !! 0 & snd
-      samplePost = filtered !! 0 & snd
-      domain = mkDataDomain
-        ((CP.head samplePre  <&> slSlot) & fromMaybe 0)
-        ((lastMay samplePre  <&> slSlot) & fromMaybe 0)
-        ((CP.head samplePost <&> slSlot) & fromMaybe 0)
-        ((lastMay samplePost <&> slSlot) & fromMaybe 0)
-        (fromIntegral . unSlotNo)
-  progress "filtered-slotstats-slot-domain" $ J domain
-  pure $ (,) domain filtered
-
+runSlotFilters Run{genesis} flts slots =
+  mapConcurrentlyPure (fmap $ filterSlotStats flts) slots
+    <&> \filtered ->
+          (,) (domain filtered) filtered
  where
+   domain :: [(JsonLogfile, [SlotStats a])] -> DataDomain SlotNo
+   domain filtered = mkDataDomain
+     ((CP.head samplePre  <&> slSlot) & fromMaybe 0)
+     ((lastMay samplePre  <&> slSlot) & fromMaybe 0)
+     ((CP.head samplePost <&> slSlot) & fromMaybe 0)
+     ((lastMay samplePost <&> slSlot) & fromMaybe 0)
+     (fromIntegral . unSlotNo)
+    where
+      samplePre  =    slots !! 0 & snd
+      samplePost = filtered !! 0 & snd
+
    filterSlotStats :: [ChainFilter] -> [SlotStats a] -> [SlotStats a]
    filterSlotStats filters =
      filter (\x -> all (testSlotStats genesis x) slotFilters)
@@ -294,7 +294,7 @@ timelineFromLogObjects run@Run{genesis} (f, xs') =
      , aResTimestamp  = firstRelevantLogObjectTime
      , aMempoolTxs    = 0
      , aBlockNo       = 0
-     , aLastBlockSlot = 0                          -- Genesis counts : -)
+     , aLastBlockSlot = 0                          -- Genesis counts
      , aSlotStats     = [zeroSlotStats]
      , aRunScalars    = zeroRunScalars
      , aTxsCollectedAt= mempty

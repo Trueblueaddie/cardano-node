@@ -332,18 +332,21 @@ runChainCommand s
 
 runChainCommand s
   c@(MetaGenesis runMeta shelleyGenesis) = do
+  progress "run" (Q $ printf "reading run metadata & Shelley genesis")
   run <- readRun shelleyGenesis runMeta
          & firstExceptT (fromAnalysisError c)
   pure s { sRun = Just run }
 
 runChainCommand s
   c@(Unlog logs mHostDed okDErr okAny) = do
+  progress "logs" (Q $ printf "parsing %d log files" $ length logs)
   los <- runLiftLogObjects logs mHostDed okDErr okAny
          & firstExceptT (CommandError c)
   pure s { sObjLists = Just los }
 
 runChainCommand s@State{sObjLists=Just objs}
   c@DumpLogObjects = do
+  progress "logobjs" (Q $ printf "dumping %d logobject streams" $ length objs)
   dumpAssociatedObjectStreams "logobjs" objs & firstExceptT (CommandError c)
   pure s
 runChainCommand _ c@DumpLogObjects = missingCommandData c
@@ -353,6 +356,7 @@ runChainCommand _ c@DumpLogObjects = missingCommandData c
 
 runChainCommand s@State{sRun=Just run, sObjLists=Just objs}
   BuildMachViews = do
+  progress "machviews" (Q $ printf "building %d machviews" $ length objs)
   mvs <- buildMachViews run objs & liftIO
   pure s { sMachViews = Just mvs }
 runChainCommand _ c@BuildMachViews = missingCommandData c
@@ -360,17 +364,20 @@ runChainCommand _ c@BuildMachViews = missingCommandData c
 
 runChainCommand s@State{sMachViews=Just machViews}
   c@DumpMachViews = do
+  progress "machviews" (Q $ printf "dumping %d machviews" $ length machViews)
   dumpAssociatedObjects "mach-views" machViews & firstExceptT (CommandError c)
   pure s
 runChainCommand _ c@DumpMachViews = missingCommandData c
   ["machine views"]
 
 runChainCommand s c@(ReadMachViews fs) = do
+  progress "machviews" (Q $ printf "reading %d machviews" $ length fs)
   machViews <- readAssociatedObjects "mach-views" fs & firstExceptT (CommandError c)
   pure s { sMachViews = Just machViews }
 
 runChainCommand s@State{sRun=Just run, sMachViews=Just mvs}
   c@(RebuildChain fltfs fltExprs) = do
+  progress "machviews" (Q $ printf "filtering %d machviews" $ length mvs)
   (fltFiles,
    (<> [ FilterName "inline-expr" | not (null fltExprs)])
     -> fltNames) <- readFilters fltfs
@@ -389,6 +396,7 @@ runChainCommand _ c@RebuildChain{} = missingCommandData c
 
 runChainCommand s
   c@(ReadChain f) = do
+  progress "chain" (Q $ printf "reading chain")
   chain <- mapM (Aeson.eitherDecode @BlockEvents)
            . filter ((> 5) . LBS.length)
            . LBS.split '\n'
@@ -399,6 +407,7 @@ runChainCommand s
 
 runChainCommand s@State{sChain=Just chain}
   c@(DumpChain f) = do
+  progress "chain" (Q $ printf "dumping chain")
   dumpObjects "chain" chain f & firstExceptT (CommandError c)
   pure s
 runChainCommand _ c@DumpChain{} = missingCommandData c
@@ -406,6 +415,7 @@ runChainCommand _ c@DumpChain{} = missingCommandData c
 
 runChainCommand s@State{sRun=Just run, sChain=Just chain}
   c@(TimelineChain f comments) = do
+  progress "chain" (Q $ printf "dumping prettyprinted chain")
   dumpText "chain" (renderTimeline run (const True) comments chain) f
     & firstExceptT (CommandError c)
   pure s
@@ -417,6 +427,7 @@ runChainCommand s@State{sRun=Just run, sObjLists=Just objs}
   let nonIgnored = flip filter objs $ (`notElem` ignores) . fst
   forM_ ignores $
     progress "perf-ignored-log" . R . unJsonLogfile
+  progress "slots" (Q $ printf "building slot %d timelines" $ length objs)
   (scalars, slotsRaw) <-
     fmap (mapAndUnzip redistribute) <$> collectSlotStats run nonIgnored
     & newExceptT
@@ -427,6 +438,7 @@ runChainCommand _ c@CollectSlots{} = missingCommandData c
 
 runChainCommand s@State{sSlotsRaw=Just slotsRaw}
   c@DumpSlotsRaw = do
+  progress "slots" (Q $ printf "dumping %d unfiltered slot timelines" $ length slotsRaw)
   dumpAssociatedObjectStreams "raw-slots" slotsRaw & firstExceptT (CommandError c)
   pure s
 runChainCommand _ c@DumpSlotsRaw = missingCommandData c
@@ -434,13 +446,17 @@ runChainCommand _ c@DumpSlotsRaw = missingCommandData c
 
 runChainCommand s@State{sRun=Just run, sSlotsRaw=Just slotsRaw}
   c@(FilterSlots fltfs fltExprs) = do
+  progress "slots" (Q $ printf "filtering %d slot timelines" $ length slotsRaw)
   (fltFiles,
     (<> [ FilterName "inline-expr" | not (null fltExprs)])
     -> fltNames) <- readFilters fltfs & firstExceptT (CommandError c)
   let flts = fltFiles <> fltExprs
+  forM_ flts $
+    progress "filter" . Q . show
   (domSlots, fltrd) <- runSlotFilters run flts slotsRaw
                        & liftIO
                        & firstExceptT (CommandError c)
+  progress "filtered-slotstats-slot-domain" $ J domSlots
   when (maximum (length . snd <$> fltrd) == 0) $
     throwE $ CommandError c $ mconcat
       [ "All ", show $ maximum (length . snd <$> slotsRaw), " slots filtered out." ]
@@ -453,6 +469,7 @@ runChainCommand _ c@FilterSlots{} = missingCommandData c
 
 runChainCommand s@State{sSlots=Just slots}
   c@DumpSlots = do
+  progress "slots" (Q $ printf "dumping %d slot timelines" $ length slots)
   dumpAssociatedObjectStreams "slots" slots & firstExceptT (CommandError c)
   pure s
 runChainCommand _ c@DumpSlots = missingCommandData c
@@ -460,6 +477,7 @@ runChainCommand _ c@DumpSlots = missingCommandData c
 
 runChainCommand s@State{sRun=Just run, sSlots=Just slots}
   c@TimelineSlots = do
+  progress "mach" (Q $ printf "dumping %d slot timelines" $ length slots)
   dumpAssociatedTextStreams "mach"
     (fmap (fmap $ renderTimeline run (const True) []) slots)
     & firstExceptT (CommandError c)
@@ -469,6 +487,7 @@ runChainCommand _ c@TimelineSlots{} = missingCommandData c
 
 runChainCommand s@State{sRun=Just run, sChain=Just chain, sDomSlots=Just domS, sDomBlocks=Just domB}
   ComputePropagation = do
+  progress "block-propagation" $ J (domS, domB)
   prop <- blockProp run chain domS domB & liftIO
   pure s { sBlockProp = Just [prop] }
 runChainCommand _ c@ComputePropagation = missingCommandData c
@@ -476,6 +495,7 @@ runChainCommand _ c@ComputePropagation = missingCommandData c
 
 runChainCommand s@State{sBlockProp=Just [prop]}
   c@(RenderPropagation mode f subset) = do
+  progress "block-propagation" $ Q "rendering block propagation CDFs"
   forM_ (renderAnalysisCDFs (sRunAnchor s) (propSubsetFn subset) OfOverallDataset Nothing mode prop) $
     \(name, body) ->
       dumpText (T.unpack name) body (modeFilename f name mode)
@@ -486,6 +506,7 @@ runChainCommand _ c@RenderPropagation{} = missingCommandData c
 
 runChainCommand s@State{}
   c@(ReadPropagations fs) = do
+  progress "block-propagations" (Q $ printf "reading %d block propagations" $ length fs)
   xs <- mapConcurrently readJsonDataIO fs
     & fmap sequence
     & newExceptT
@@ -495,6 +516,7 @@ runChainCommand s@State{}
 
 runChainCommand s@State{sBlockProp=Just props}
   c@ComputeMultiPropagation = do
+  progress "block-propagations" (Q $ printf "computing %d block propagations" $ length props)
   xs <- pure (summariseMultiBlockProp (nEquicentiles $ max 7 (length props)) props)
     & newExceptT
     & firstExceptT (CommandError c . show)
@@ -504,6 +526,7 @@ runChainCommand _ c@ComputeMultiPropagation{} = missingCommandData c
 
 runChainCommand s@State{sMultiBlockProp=Just prop}
   c@(RenderMultiPropagation mode f subset aspect) = do
+  progress "block-propagations" (Q "rendering multi-run block propagation")
   forM_ (renderAnalysisCDFs (sTagsAnchor s) (propSubsetFn subset) aspect Nothing mode prop) $
     \(name, body) ->
       dumpText (T.unpack name) body (modeFilename f name mode)
@@ -514,6 +537,7 @@ runChainCommand _ c@RenderMultiPropagation{} = missingCommandData c
 
 runChainCommand s@State{sRun=Just run, sSlots=Just slots}
   c@ComputeMachPerf = do
+  progress "machperf" (Q $ printf "computing %d machine performances" $ length slots)
   perf <- mapConcurrentlyPure (slotStatsMachPerf run) slots
           & fmap sequence
           & newExceptT
@@ -524,6 +548,7 @@ runChainCommand _ c@ComputeMachPerf{} = missingCommandData c
 
 runChainCommand s@State{sMachPerf=Just perf}
   c@(RenderMachPerf _mode _subset) = do
+  progress "machperf" (Q $ printf "dumping %d machine performance stats" $ length perf)
   dumpAssociatedObjects "perf-stats" perf
     & firstExceptT (CommandError c)
   pure s
@@ -532,6 +557,7 @@ runChainCommand _ c@RenderMachPerf{} = missingCommandData c
 
 runChainCommand s@State{sMachPerf=Just machPerfs}
   c@ComputeClusterPerf = do
+  progress "clusterperf" (Q $ printf "summarising %d machine performances" $ length machPerfs)
   clusterPerf <- pure (summariseClusterPerf (nEquicentiles $ max 7 (length machPerfs)) (machPerfs <&> snd))
     & newExceptT
     & firstExceptT (CommandError c . show)
@@ -541,6 +567,7 @@ runChainCommand _ c@ComputeClusterPerf{} = missingCommandData c
 
 runChainCommand s@State{sClusterPerf=Just [prop]}
   c@(RenderClusterPerf mode f subset) = do
+  progress "clusterperf" (Q $ printf "rendering cluster performance")
   forM_ (renderAnalysisCDFs (sRunAnchor s) (perfSubsetFn subset) OfOverallDataset Nothing mode prop) $
     \(name, body) ->
       dumpText (T.unpack name) body (modeFilename f name mode)
@@ -551,6 +578,7 @@ runChainCommand _ c@RenderClusterPerf{} = missingCommandData c
 
 runChainCommand s@State{}
   c@(ReadMultiClusterPerf fs) = do
+  progress "clusterperfs" (Q $ printf "reading %d cluster performances" $ length fs)
   xs <- mapConcurrently (fmap (Aeson.eitherDecode @ClusterPerf) . LBS.readFile . unJsonInputFile) fs
     & fmap sequence
     & newExceptT
@@ -560,6 +588,7 @@ runChainCommand s@State{}
 
 runChainCommand s@State{sClusterPerf=Just perfs}
   c@ComputeMultiClusterPerf = do
+  progress "clusterperfs" (Q $ printf "summarising %d cluster performances" $ length perfs)
   xs <- pure (summariseMultiClusterPerf (nEquicentiles $ max 7 (length perfs)) perfs)
     & newExceptT
     & firstExceptT (CommandError c . show)
@@ -569,6 +598,7 @@ runChainCommand _ c@ComputeMultiClusterPerf{} = missingCommandData c
 
 runChainCommand s@State{sMultiClusterPerf=Just (MultiClusterPerf perf)}
   c@(RenderMultiClusterPerf mode f subset aspect) = do
+  progress "clusterperfs" (Q $ printf "rendering multi-run cluster performance")
   forM_ (renderAnalysisCDFs (sTagsAnchor s) (perfSubsetFn subset) aspect Nothing mode perf) $
     \(name, body) ->
       dumpText (T.unpack name) body (modeFilename f name mode)
@@ -578,6 +608,7 @@ runChainCommand _ c@RenderMultiClusterPerf{} = missingCommandData c
   ["multi-run cluster preformance stats"]
 
 runChainCommand s c@(Compare ede mTmpl outf@(TextOutputFile outfp) runs) = do
+  progress "report" (Q $ printf "rendering report for %d runs" $ length runs)
   xs :: [(ClusterPerf, BlockPropOne, Run)] <- forM runs $
     \(mf,gf,cpf,bpf)->
       (,,)

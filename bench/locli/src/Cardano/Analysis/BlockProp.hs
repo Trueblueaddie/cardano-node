@@ -463,7 +463,6 @@ rebuildChain run@Run{genesis} flts fltNames xs@(fmap snd -> machViews) = do
 
 blockProp :: Run -> [BlockEvents] -> DataDomain SlotNo -> DataDomain BlockNo -> IO BlockPropOne
 blockProp run@Run{genesis} fullChain domSlot domBlock = do
-  progress "block-propagation" $ J (domSlot, domBlock)
   pure $ BlockProp
     { bpDomainSlots          = domSlot
     , bpDomainBlocks         = domBlock

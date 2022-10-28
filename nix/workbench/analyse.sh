@@ -350,7 +350,8 @@ case "$op" in
 
         verbose "analysis | locli" "$(with_color reset ${locli_args[@]}) $(colorise "${ops_final[@]}")"
         time locli "${locli_args[@]}" "${ops_final[@]}"
-        json_compact_prettify $(ls $adir/*.json | grep -v '\.flt\.json$')
+        progress "analyse" "prettifying JSON data.."
+        json_compact_prettify $(ls $adir/*.json | grep -v '\.\(flt\|logobjs\)\.json$')
         ;;
 
     multi-call )

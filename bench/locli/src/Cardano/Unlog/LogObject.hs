@@ -43,7 +43,6 @@ runLiftLogObjects :: [JsonLogfile] -> Maybe HostDeduction -> Bool -> [LOAnyType]
 runLiftLogObjects fs (fmap hostDeduction -> mHostDed) okDErr anyOks = liftIO $ do
   forConcurrently fs
     (\f -> (f,) . fmap (setLOhost f mHostDed) <$> readLogObjectStream (unJsonLogfile f) okDErr anyOks)
-  progress "logs" (Q $ printf "%d log files parsed" $ length fs)
  where
    setLOhost :: JsonLogfile -> Maybe (JsonLogfile -> Host) -> LogObject -> LogObject
    setLOhost _   Nothing lo = lo
@@ -62,13 +61,13 @@ readLogObjectStream f okDErr anyOks =
                       (printf "Decode error while parsing %s -- %s" f (show err))
                     _ -> True)
                . loBody)) .
-    (filter ((\case
-                 LOAny laty obj ->
-                   if elem laty anyOks then True else
-                   error
-                   (printf "Unexpected LOAny while parsing %s -- %s: %s" f (show laty) (show obj))
-                 _ -> True)
-            . loBody)) .
+    filter ((\case
+                LOAny laty obj ->
+                  if elem laty anyOks then True else
+                    error
+                    (printf "Unexpected LOAny while parsing %s -- %s: %s" f (show laty) (show obj))
+                _ -> True)
+             . loBody) .
     filter ((/= eofError) . loBody) .
     fmap (either (LogObject zeroUTCTime "Cardano.Analysis.DecodeError" "DecodeError" "" (TId "0") . LODecodeError . Text.fromText . LText.pack)
                  id
@@ -164,10 +163,8 @@ interpreters = map3ple Map.fromList . unzip3 . fmap ent $
 
   -- Forwarding:
   , (,,,) "ChainSyncServerEvent.TraceChainSyncServerRead.AddBlock" "unknown0" "unknown1" $
-    \v -> (LOChainSyncServerSendHeader . fromMaybe (error $ "Incompatible LOChainSyncServerSendHeader: " <> show v))
-            <$> do
-                  tip <- v .:? "tip"
-                  forM tip $ \x -> x .: "block"
+    \v -> LOChainSyncServerSendHeader . fromMaybe (error $ "Incompatible LOChainSyncServerSendHeader: " <> show v)
+          <$>  v .:? "block"
 
   , (,,,) "ChainSyncServerEvent.TraceChainSyncServerReadBlocked.AddBlock" "ChainSyncServerEvent.TraceChainSyncServerUpdate" "ChainSync.ServerHeader.Update" $
     \v -> case ( KeyMap.lookup "risingEdge" v
