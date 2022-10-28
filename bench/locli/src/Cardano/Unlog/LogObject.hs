@@ -88,7 +88,7 @@ type Threeple t = (t, t, t)
 interpreters :: Threeple (Map Text (Object -> Parser LOBody))
 interpreters = map3ple Map.fromList . unzip3 . fmap ent $
   -- Every second:
-  [ (,,,) "Resources" "Resources" "" $
+  [ (,,,) "Resources" "Resources" "unknown4" $
     \v -> LOResources <$> parsePartialResourceStates (Object v)
 
   -- Leadership:
@@ -146,21 +146,24 @@ interpreters = map3ple Map.fromList . unzip3 . fmap ent $
             <$> v .: "block"
 
   -- Forwarding:
-  , (,,,) "ChainSyncServerEvent.TraceChainSyncServerRead.AddBlock" "ChainSyncServerHeader.ChainSyncServerEvent.ServerRead.AddBlock" "" $
-    \v -> LOChainSyncServerSendHeader
-            <$> v .: "block"
+  , (,,,) "ChainSyncServerEvent.TraceChainSyncServerRead.AddBlock" "unknown0" "unknown1" $
+    \v -> (LOChainSyncServerSendHeader . fromMaybe (error $ "Incompatible LOChainSyncServerSendHeader: " <> show v))
+            <$> do
+                  tip <- v .:? "tip"
+                  forM tip $ \x -> x .: "block"
 
-  , (,,,) "ChainSyncServerEvent.TraceChainSyncServerReadBlocked.AddBlock" "ChainSyncServerHeader.ChainSyncServerEvent.ServerReadBlocked.AddBlock" "ChainSync.ServerHeader.Update" $
+  , (,,,) "ChainSyncServerEvent.TraceChainSyncServerReadBlocked.AddBlock" "ChainSyncServerEvent.TraceChainSyncServerUpdate" "ChainSync.ServerHeader.Update" $
     \v -> case ( KeyMap.lookup "risingEdge" v
                , KeyMap.lookup "blockingRead" v
                , KeyMap.lookup "rollBackTo" v) of
-            -- Skip the falling edge & non-blocking reads:
-            (Just (Bool False), _, _) -> pure $ LOAny v
-            (_, Just (Bool False), _) -> pure $ LOAny v
-            (_, _, Just _)            -> pure $ LOAny v
+            (Just (Bool False), _, _) -> pure $ LOAny v -- Skip the falling edge
+            (_, Just (Bool False), _) -> pure $ LOAny v -- Skip the non-blocking reads
+            (_, _, Just _)            -> pure $ LOAny v -- Skip rollbacks
             -- Should be either rising edge+rollforward, or legacy:
             _ -> do
-              blockLegacy <- v .:? "block"
+              blockLegacy <- do
+                tip <- v .:? "tip"
+                forM tip $ \x -> x .: "block"
               block       <- v .:? "addBlock"
               pure $
                 LOChainSyncServerSendHeader
@@ -239,9 +242,12 @@ interpreters = map3ple Map.fromList . unzip3 . fmap ent $
    map3ple :: (a -> b) -> (a,a,a) -> (b,b,b)
    map3ple f (x,y,z) = (f x, f y, f z)
 
-logObjectStreamInterpreterKeysLegacy, logObjectStreamInterpreterKeysOldOrg, logObjectStreamInterpreterKeys :: [Text]
-logObjectStreamInterpreterKeysLegacy = Map.keys (interpreters & fst3)
-logObjectStreamInterpreterKeysOldOrg = Map.keys (interpreters & snd3)
+logObjectStreamInterpreterKeysLegacy, logObjectStreamInterpreterKeys :: [Text]
+logObjectStreamInterpreterKeysLegacy =
+  logObjectStreamInterpreterKeysLegacy1 <> logObjectStreamInterpreterKeysLegacy2
+ where
+   logObjectStreamInterpreterKeysLegacy1 = Map.keys (interpreters & fst3)
+   logObjectStreamInterpreterKeysLegacy2 = Map.keys (interpreters & snd3)
 logObjectStreamInterpreterKeys       = Map.keys (interpreters & thd3)
 
 data LOBody
@@ -331,12 +337,12 @@ instance FromJSON LogObject where
       <*> pure kind
       <*> v .: "host"
       <*> v .: "thread"
-      <*> case Map.lookup  ns                                       (thd3 interpreters) <|>
-               Map.lookup  ns                                       (snd3 interpreters) <|>
-               Map.lookup (ns
+      <*> case Map.lookup  ns                                       (thd3 interpreters)
+           <|> Map.lookup  ns                                       (snd3 interpreters)
+           <|> Map.lookup (kind
                            & Text.stripPrefix "Cardano.Node."
-                           & fromMaybe "")                          (snd3 interpreters) <|>
-               Map.lookup  kind                                     (fst3 interpreters) of
+                           & fromMaybe kind)                        (snd3 interpreters)
+           <|> Map.lookup  kind                                     (fst3 interpreters) of
             Just interp -> interp unwrapped
             Nothing -> pure $ LOAny unwrapped
    where
