@@ -78,8 +78,8 @@ data ChainCommand
 
   |      ComputeClusterPerf
   |       RenderClusterPerf RenderFormat TextOutputFile PerfSubset
+  |        ReadClusterPerfs [JsonInputFile MultiClusterPerf]
 
-  |    ReadMultiClusterPerf [JsonInputFile MultiClusterPerf]
   | ComputeMultiClusterPerf
   |  RenderMultiClusterPerf RenderFormat TextOutputFile PerfSubset CDF2Aspect
 
@@ -200,11 +200,11 @@ parseChainCommand =
    , op "render-clusterperf" "Write cluster performance stats"
      (writerOpts RenderClusterPerf "Render"
       <*> parsePerfSubset)
-
-   , op "read-clusterperfs" "Read multi-run cluster performance analysis as JSON"
-     (ReadMultiClusterPerf
+   , op "read-clusterperfs" "Read some cluster performance analyses as JSON"
+     (ReadClusterPerfs
        <$> some
        (optJsonInputFile "clusterperf"   "JSON cluster performance input file"))
+
    , op "compute-multi-clusterperf" "Consolidate cluster performance stats."
      (ComputeMultiClusterPerf & pure)
    , op "render-multi-clusterperf" "Write multi-run cluster performance results"
@@ -577,7 +577,7 @@ runChainCommand _ c@RenderClusterPerf{} = missingCommandData c
   ["multi-run block propagation"]
 
 runChainCommand s@State{}
-  c@(ReadMultiClusterPerf fs) = do
+  c@(ReadClusterPerfs fs) = do
   progress "clusterperfs" (Q $ printf "reading %d cluster performances" $ length fs)
   xs <- mapConcurrently (fmap (Aeson.eitherDecode @ClusterPerf) . LBS.readFile . unJsonInputFile) fs
     & fmap sequence

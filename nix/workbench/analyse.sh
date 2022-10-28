@@ -153,6 +153,28 @@ case "$op" in
         analyse "${sargs[@]}" multi-call "$*" ${script[*]}
         ;;
 
+    rerender | render )
+        local script=(
+            context
+
+            read-propagations
+            propagation-json
+            propagation-org
+            propagation-{forger,peers,endtoend}
+            propagation-gnuplot
+            propagation-full
+
+            read-clusterperfs
+            clusterperf-json
+            clusterperf-gnuplot
+            clusterperf-org
+            clusterperf-report
+            clusterperf-full
+         )
+        verbose "analysis" "$(white full), calling script:  $(colorise ${script[*]})"
+        analyse "${sargs[@]}" map "call ${script[*]}" "$@"
+        ;;
+
     full | standard | std )
         local script=(
             logs               $(test -n "$dump_logobjects" && echo 'dump-logobjects')
@@ -344,8 +366,10 @@ case "$op" in
         vj=("${vi[@]/#clusterperf-report/   'render-clusterperf' --report \"$adir\"/clusterperf.report.org --summary }")
         vk=("${vj[@]/#clusterperf-gnuplot/  'render-clusterperf' --gnuplot \"$adir\"/%s.cdf --full }")
         vl=("${vk[@]/#clusterperf-full/     'render-clusterperf' --pretty \"$adir\"/clusterperf-full.txt --full }")
-        local ops_final=() vexp=
-        for v in "${vl[@]}"
+        vm=("${vl[@]/#read-clusterperfs/    'read-clusterperfs' --clusterperf \"$adir\"/clusterperf.json }")
+        vn=("${vm[@]/#read-propagations/    'read-propagations'        --prop \"$adir\"/blockprop.json }")
+        local ops_final=()
+        for v in "${vn[@]}"
         do eval ops_final+=($v); done
 
         verbose "analysis | locli" "$(with_color reset ${locli_args[@]}) $(colorise "${ops_final[@]}")"
