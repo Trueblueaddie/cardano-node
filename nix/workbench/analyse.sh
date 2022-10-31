@@ -47,7 +47,6 @@ usage_analyse() {
     $(helpopt --dump-slots)       Machperf:  dump filtered slots (JSON)
     $(helpopt --multi-overall)    Multirun:  Overall dataset statistical summary
     $(helpopt --multi-inter-cdf)  Multirun:  Inter-sample (i.e. inter-CDF) stats
-    $(helpopt --refresh)          Redo initial log filtering
 EOF
 }
 analysis_allowed_loanys=(
@@ -59,7 +58,7 @@ analysis_allowed_loanys=(
 analyse() {
 local filters=() filter_exprs=() filter_reasons= chain_errors= aws= sargs=() unfiltered= perf_omit_hosts=()
 local dump_logobjects= dump_machviews= dump_chain= dump_slots_raw= dump_slots=
-local multi_aspect='--inter-cdf' refresh= rtsmode= locli_args=()
+local multi_aspect='--inter-cdf' rtsmode= locli_args=()
 
 progress "analyse" "args:  $(yellow $*)"
 while test $# -gt 0
@@ -81,7 +80,6 @@ do case "$1" in
        --dump-slots      | -s )    sargs+=($1);    dump_slots='true';;
        --multi-overall )           sargs+=($1);    multi_aspect='--overall';;
        --multi-inter-cdf )         sargs+=($1);    multi_aspect='--inter-cdf';;
-       --refresh | -re | -r )      sargs+=($1);    refresh='true';;
        --rtsmode-aws | --aws )     sargs+=($1);    rtsmode='aws';;
        --rtsmode-lomem | --lomem ) sargs+=($1);    rtsmode='lomem';;
        --rtsmode-hipar )           sargs+=($1);    rtsmode='hipar';;
@@ -437,17 +435,24 @@ case "$op" in
 
         ## 0. ask locli what it cares about
         local keyfile="$adir"/substring-keys
+        local key_old=$(sha256sum "$keyfile" | cut -d' ' -f1)
         case $(jq '.node.tracing_backend // "iohk-monitoring"' --raw-output $dir/profile.json) in
              trace-dispatcher ) locli 'list-logobject-keys'        --keys        "$keyfile";;
              iohk-monitoring  ) locli 'list-logobject-keys-legacy' --keys-legacy "$keyfile";;
         esac
+        local key_new=$(sha256sum "$keyfile" | cut -d' ' -f1)
 
         ## 1. unless already done, filter logs according to locli's requirements
         local logdirs=($(ls -d "$dir"/node-*/ 2>/dev/null))
         local logfiles=($(ls "$adir"/logs-node-*.flt.json 2>/dev/null))
-        local prefilter=$(test -z "${logfiles[*]}" -o -n "$refresh" && echo 'true' || echo 'false')
-        echo "{ \"prefilter\": $prefilter }"
-        if test x$prefilter != xtrue
+        local prefilter=$(if   test -z "${logfiles[*]}"
+                          then echo 'prefiltered-logs-not-yet-created'
+                          elif test "$key_new" != "$key_old"
+                          then echo 'prefiltering-keyset-changed'
+                          else echo 'false'
+                          fi)
+        echo "{ \"prefilter\": \"$prefilter\" }"
+        if test "$prefilter" = "false"
         then return; fi
 
         verbose "analyse" "filtering logs:  $(with_color black ${logdirs[@]})"
