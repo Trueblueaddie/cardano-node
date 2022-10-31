@@ -22,7 +22,7 @@ import           Data.IP (toSockAddr)
 import           Prelude (String, error, id, show)
 
 import qualified Control.Concurrent.Async as Async
-import           Control.Monad.Class.MonadSTM.Strict
+import           Control.Concurrent.Class.MonadSTM.Strict
 import           Control.Monad.Trans.Except.Extra (left)
 import           "contra-tracer" Control.Tracer
 import qualified Data.Map.Strict as Map

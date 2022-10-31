@@ -409,12 +409,13 @@ instance HasSeverityAnnotation (TracePeerSelection addr) where
       TraceDemoteHotFailed       {} -> Info
       TraceDemoteHotDone         {} -> Info
       TraceDemoteAsynchronous    {} -> Info
+      TraceDemoteLocalAsynchronous {} -> Warning
       TraceGovernorWakeup        {} -> Info
       TraceChurnWait             {} -> Info
       TraceChurnMode             {} -> Info
 
-instance HasPrivacyAnnotation (DebugPeerSelection addr conn)
-instance HasSeverityAnnotation (DebugPeerSelection addr conn) where
+instance HasPrivacyAnnotation (DebugPeerSelection addr)
+instance HasSeverityAnnotation (DebugPeerSelection addr) where
   getSeverityAnnotation _ = Debug
 
 instance HasPrivacyAnnotation (PeerSelectionActionsTrace SockAddr)
@@ -669,10 +670,9 @@ instance Transformable Text IO (TracePeerSelection SockAddr) where
 instance HasTextFormatter (TracePeerSelection SockAddr) where
   formatText a _ = pack (show a)
 
-instance Show conn
-      => Transformable Text IO (DebugPeerSelection SockAddr conn) where
+instance Transformable Text IO (DebugPeerSelection SockAddr) where
   trTransformer = trStructuredText
-instance HasTextFormatter (DebugPeerSelection SockAddr conn) where
+instance HasTextFormatter (DebugPeerSelection SockAddr) where
   -- One can only change what is logged with respect to verbosity using json
   -- format.
   formatText _ obj = pack (show obj)
@@ -1568,6 +1568,10 @@ instance ToObject (TracePeerSelection SockAddr) where
     mconcat [ "kind" .= String "DemoteAsynchronous"
              , "state" .= toJSON msp
              ]
+  toObject _verb (TraceDemoteLocalAsynchronous msp) =
+    mconcat [ "kind" .= String "DemoteLocalAsynchronous"
+             , "state" .= toJSON msp
+             ]
   toObject _verb TraceGovernorWakeup =
     mconcat [ "kind" .= String "GovernorWakeup"
              ]
@@ -1631,7 +1635,7 @@ peerSelectionTargetsToObject
                , "active" .= targetNumberOfActivePeers
                ]
 
-instance Show peerConn => ToObject (DebugPeerSelection SockAddr peerConn) where
+instance ToObject (DebugPeerSelection SockAddr) where
   toObject verb (TraceGovernorState blockedAt wakeupAfter
                    PeerSelectionState { targets, knownPeers, establishedPeers, activePeers })
       | verb <= NormalVerbosity =
