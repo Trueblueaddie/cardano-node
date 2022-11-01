@@ -286,29 +286,31 @@ renderAnalysisCDFs a@Anchor{..} fieldSelr aspect _centileSelr AsReport x =
    aspectColHeadersAndProjections = \case
      OfOverallDataset ->
        (,)
-       ["average", "CoV", "min", "max", "stddev", "size"]
-       \c@CDF{..} ->
+       ["average", "CoV", "min", "max", "stddev", "range", "size"]
+       \c@CDF{cdfRange=(cdfMin, cdfMax), ..} ->
          let avg = cdfAverageVal c & toDouble in
          [ avg
          , cdfStddev / avg
-         , fromRational . toRational $ fst cdfRange
-         , fromRational . toRational $ snd cdfRange
+         , fromRational . toRational $ cdfMin
+         , fromRational . toRational $ cdfMax
          , cdfStddev
+         , fromRational . toRational $ cdfMax - cdfMin
          , fromIntegral cdfSize
          ]
      OfInterCDF ->
        (,)
-       ["average", "CoV", "min", "max", "stddev", "size"]
+       ["average", "CoV", "min", "max", "stddev", "range", "size"]
        (cdfArity
          (error "Cannot do inter-CDF statistics on plain CDFs")
-         (\CDF{cdfAverage} ->
-             let avg = cdfAverageVal cdfAverage & toDouble in
+         (\CDF{cdfAverage=cdfAvg@CDF{cdfRange=(minAvg, maxAvg),..}} ->
+             let avg = cdfAverageVal cdfAvg & toDouble in
              [ avg
-             , cdfStddev cdfAverage / avg
-             , toDouble . fst $ cdfRange cdfAverage
-             , toDouble . snd $ cdfRange cdfAverage
-             , cdfStddev cdfAverage
-             , fromIntegral $ cdfSize cdfAverage
+             , cdfStddev / avg
+             , toDouble minAvg
+             , toDouble maxAvg
+             , cdfStddev
+             , toDouble $ maxAvg - minAvg
+             , fromIntegral cdfSize
              ]))
 
 renderAnalysisCDFs a fieldSelr _c2a centiSelr AsPretty x =
