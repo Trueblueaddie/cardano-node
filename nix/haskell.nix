@@ -128,6 +128,12 @@ haskell-nix.cabalProject' ({ pkgs
         export CARDANO_CLI=${config.hsPkgs.cardano-cli.components.exes.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
         export CARDANO_NODE_SRC=${src}
       ";
+        packages.trace-dispatcher.components.tests.trace-dispatcher-test.preCheck =
+          let
+            cmp = config.hsPkgs.cardano-tracer.components.exes.cardano-tracer;
+            deps = cmp.executableToolDepends;
+          in
+            ''PATH=${lib.makeBinPath deps}:$PATH'';
         packages.cardano-node-chairman.components.tests.chairman-tests.build-tools =
           lib.mkForce [
             pkgs.lsof
