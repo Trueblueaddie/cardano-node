@@ -56,7 +56,7 @@ data ChainCommand
   |         ReadMachViews   [JsonLogfile]
 
   |         RebuildChain    [JsonFilterFile] [ChainFilter]
-  |            DumpChain    (JsonOutputFile [BlockEvents])
+  |            DumpChain    (JsonOutputFile [BlockEvents]) (JsonOutputFile [BlockEvents])
   |            ReadChain    (JsonInputFile [BlockEvents])
   |        TimelineChain    TextOutputFile [RTComments BlockEvents]
 
@@ -144,7 +144,8 @@ parseChainCommand =
        <$> optJsonInputFile  "chain"         "Block event stream (JSON)")
    , op "dump-chain" "Dump chain"
      (DumpChain
-       <$> optJsonOutputFile "chain"         "JSON chain output file")
+       <$> optJsonOutputFile "chain"         "JSON chain output file"
+       <*> optJsonOutputFile "chain-rejecta" "JSON rejected chain output file")
    , op "timeline-chain" "Render chain timeline"
      (TimelineChain
        <$> optTextOutputFile "timeline"      "Render a human-readable reconstructed chain view"
@@ -297,6 +298,7 @@ data State
     -- propagation
   , sMachViews        :: Maybe [(JsonLogfile, MachView)]
   , sChain            :: Maybe [BlockEvents]
+  , sChainRejecta     :: Maybe [BlockEvents]
   , sBlockProp        :: Maybe [BlockPropOne]
   , sMultiBlockProp   :: Maybe MultiBlockProp
     -- performance
@@ -383,9 +385,10 @@ runChainCommand s@State{sRun=Just run, sMachViews=Just mvs}
     -> fltNames) <- readFilters fltfs
           & firstExceptT (CommandError c)
   let flts = fltFiles <> fltExprs
-  (domSlot, domBlock, chain) <- rebuildChain run flts fltNames mvs
-                                & liftIO
+  (domSlot, domBlock, chainRejecta, chain) <- rebuildChain run flts fltNames mvs
+                                               & liftIO
   pure s { sChain = Just chain
+         , sChainRejecta = Just chainRejecta
          , sDomSlots = Just domSlot
          , sDomBlocks = Just domBlock
          , sFilters = fltNames
@@ -405,10 +408,12 @@ runChainCommand s
            & firstExceptT (CommandError c . pack)
   pure s { sChain = Just chain }
 
-runChainCommand s@State{sChain=Just chain}
-  c@(DumpChain f) = do
+runChainCommand s@State{sChain=Just chain, sChainRejecta=Just chainRejecta}
+  c@(DumpChain f fRej) = do
   progress "chain" (Q $ printf "dumping chain")
   dumpObjects "chain" chain f & firstExceptT (CommandError c)
+  progress "chain-rejecta" (Q $ printf "dumping chain rejecta")
+  dumpObjects "chain-rejecta" chainRejecta fRej & firstExceptT (CommandError c)
   pure s
 runChainCommand _ c@DumpChain{} = missingCommandData c
   ["chain"]
@@ -665,7 +670,7 @@ runCommand (ChainCommand cs) = do
            Nothing Nothing Nothing Nothing
            Nothing Nothing Nothing Nothing
            Nothing Nothing Nothing Nothing
-           Nothing Nothing
+           Nothing Nothing Nothing
 
 opts :: ParserInfo Command
 opts =

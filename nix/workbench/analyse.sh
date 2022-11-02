@@ -42,7 +42,6 @@ usage_analyse() {
     $(helpopt --lodecodeerror-ok) Allow non-EOF LODecodeError logobjects
     $(helpopt --dump-logobjects)  Dump the intermediate data: lifted log objects
     $(helpopt --dump-machviews)   Blockprop: dump machine views (JSON)
-    $(helpopt --dump-chain)       Blockprop: dump chain (JSON)
     $(helpopt --dump-slots-raw)   Machperf:  dump unfiltered slots (JSON)
     $(helpopt --dump-slots)       Machperf:  dump filtered slots (JSON)
     $(helpopt --multi-overall)    Multirun:  Overall dataset statistical summary
@@ -75,7 +74,6 @@ do case "$1" in
        --lodecodeerror-ok | -dok ) sargs+=($1);    locli_args+=(--lodecodeerror-ok);;
        --dump-logobjects | -lo )   sargs+=($1);    dump_logobjects='true';;
        --dump-machviews  | -mw )   sargs+=($1);    dump_machviews='true';;
-       --dump-chain      | -c )    sargs+=($1);    dump_chain='true';;
        --dump-slots-raw  | -sr )   sargs+=($1);    dump_slots_raw='true';;
        --dump-slots      | -s )    sargs+=($1);    dump_slots='true';;
        --multi-overall )           sargs+=($1);    multi_aspect='--overall';;
@@ -179,7 +177,8 @@ case "$op" in
             context
 
             build-mach-views   $(test -n "$dump_machviews"  && echo 'dump-mach-views')
-            rebuild-chain      $(test -n "$dump_chain"      && echo 'dump-chain')
+            rebuild-chain
+            dump-chain
             chain-timeline
 
             collect-slots      $(test -n "$dump_slots_raw"  && echo 'dump-slots-raw')
@@ -207,13 +206,30 @@ case "$op" in
         analyse "${sargs[@]}" map "call ${script[*]}" "$@"
         ;;
 
+    re-block-propagation | reblockprop | rebp )
+        local script=(
+            read-chain
+            chain-timeline
+
+            compute-propagation
+            propagation-json
+            propagation-org
+            propagation-{forger,peers,endtoend}
+            propagation-gnuplot
+            propagation-full
+         )
+        verbose "analysis" "$(white full), calling script:  $(colorise ${script[*]})"
+        analyse "${sargs[@]}" map "call ${script[*]}" "$@"
+        ;;
+
     block-propagation | blockprop | bp )
         local script=(
             logs               $(test -n "$dump_logobjects" && echo 'dump-logobjects')
             context
 
             build-mach-views   $(test -n "$dump_machviews"  && echo 'dump-mach-views')
-            rebuild-chain      $(test -n "$dump_chain"      && echo 'dump-chain')
+            rebuild-chain
+            dump-chain
             chain-timeline
 
             compute-propagation
@@ -347,8 +363,9 @@ case "$op" in
         v1=("${v0[@]/#logs/                 'unlog' --host-from-log-filename ${analysis_allowed_loanys[*]/#/--ok-loany } ${logfiles[*]/#/--log }  }")
         v2=("${v1[@]/#context/              'meta-genesis' --run-metafile    \"$dir\"/meta.json
                                                          --shelley-genesis \"$dir\"/genesis-shelley.json }")
-        v5=("${v2[@]/#rebuild-chain/        'rebuild-chain'                  ${filters[@]}}")
-        v6=("${v5[@]/#dump-chain/           'dump-chain'            --chain \"$adir\"/chain.json}")
+        v4=("${v2[@]/#read-chain/           'read-chain'            --chain \"$adir\"/chain.json}")
+        v5=("${v4[@]/#rebuild-chain/        'rebuild-chain'                  ${filters[@]}}")
+        v6=("${v5[@]/#dump-chain/           'dump-chain'            --chain \"$adir\"/chain.json --chain-rejecta \"$adir\"/chain-rejecta.json}")
         v7=("${v6[@]/#chain-timeline/       'timeline-chain'     --timeline \"$adir\"/chain.txt ${filter_reasons:+--filter-reasons} ${chain_errors:+--chain-errors}}")
         v8=("${v7[@]/#collect-slots/        'collect-slots'           ${minus_logfiles[*]/#/--ignore-log }}")
         v9=("${v8[@]/#filter-slots/         'filter-slots'                   ${filters[@]}}")
@@ -373,7 +390,13 @@ case "$op" in
         verbose "analysis | locli" "$(with_color reset ${locli_args[@]}) $(colorise "${ops_final[@]}")"
         time locli "${locli_args[@]}" "${ops_final[@]}"
         progress "analyse" "prettifying JSON data.."
-        json_compact_prettify $(ls $adir/*.json | grep -v '\.\(flt\|logobjs\)\.json$')
+        time \
+          json_compact_prettify $(ls $adir/*.json |
+                                      fgrep -v -e '.flt.json'           \
+                                               -e '.logobjs.json'       \
+                                               -e 'chain-rejecta.json'  \
+                                               -e 'chain.json'
+                                 )
         ;;
 
     multi-call )

@@ -22,7 +22,11 @@ jq_check_json() {
 json_compact_prettify()
 {
     for f in "$@"
-    do jq_fmutate "$f" --raw-input --raw-output --slurp \
+    do if test -n "$(find $f -size +1M)";
+          ## Skip large files.
+       then continue; fi
+
+       jq_fmutate "$f" --raw-input --raw-output --slurp \
            'gsub("\n      +";"")|gsub("\n    ]";"]")|gsub(",\"";",\n          \"")' &
     done
 

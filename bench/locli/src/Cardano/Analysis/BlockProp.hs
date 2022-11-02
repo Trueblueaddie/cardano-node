@@ -19,7 +19,7 @@ import Control.Arrow            ((***), (&&&))
 import Data.Aeson               (ToJSON(..), FromJSON(..))
 import Data.Bifunctor
 import Data.Function            (on)
-import Data.List                (dropWhileEnd, intercalate)
+import Data.List                (dropWhileEnd, intercalate, partition)
 import Data.Map.Strict          (Map)
 import Data.Map.Strict          qualified as Map
 import Data.Maybe               (catMaybes, mapMaybe, isNothing)
@@ -44,6 +44,7 @@ import Data.CDF
 import Cardano.Analysis.API
 import Cardano.Analysis.Chain
 import Cardano.Analysis.ChainFilter
+import Cardano.Analysis.Context
 import Cardano.Analysis.Ground
 import Cardano.Analysis.Run
 import Cardano.Analysis.Version
@@ -277,17 +278,20 @@ beForgedAt BlockEvents{beForge=BlockForge{..}} =
 buildMachViews :: Run -> [(JsonLogfile, [LogObject])] -> IO [(JsonLogfile, MachView)]
 buildMachViews run = mapConcurrentlyPure (fst &&& blockEventMapsFromLogObjects run)
 
-rebuildChain :: Run -> [ChainFilter] -> [FilterName] -> [(JsonLogfile, MachView)] -> IO (DataDomain SlotNo, DataDomain BlockNo, [BlockEvents])
+blockEventsAcceptance :: Genesis -> [ChainFilter] -> BlockEvents -> [(ChainFilter, Bool)]
+blockEventsAcceptance genesis flts be = flts <&> (id &&& testBlockEvents genesis be)
+
+rebuildChain :: Run -> [ChainFilter] -> [FilterName] -> [(JsonLogfile, MachView)] -> IO (DataDomain SlotNo, DataDomain BlockNo, [BlockEvents], [BlockEvents])
 rebuildChain run@Run{genesis} flts fltNames xs@(fmap snd -> machViews) = do
   progress "tip" $ Q $ show $ bfeBlock tipBlock
   forM_ flts $
     progress "filter" . Q . show
-  pure (domSlot, domBlock, chain)
+  pure (domSlot, domBlock, chainRejecta, chain)
  where
    (blk0,  blkL)  = (head chain, last chain)
    mblkV =
-     liftA2 (,) (find (null . beNegAcceptance)          chain)
-                (find (null . beNegAcceptance) (reverse chain))
+     liftA2 (,) (find (all snd . beAcceptance)          chain)
+                (find (all snd . beAcceptance) (reverse chain))
    domSlot = DataDomain
              (blk0  & beSlotNo)  (blkL  & beSlotNo)
              (mblkV <&> beSlotNo . fst)
@@ -302,7 +306,8 @@ rebuildChain run@Run{genesis} flts fltNames xs@(fmap snd -> machViews) = do
               (length chain)
               (length acceptableChain)
 
-   acceptableChain = filter (null . beNegAcceptance) chain
+   (acceptableChain, chainRejecta) = partition (all snd . beAcceptance) chain
+
    chain = computeChainBlockGaps $
            doRebuildChain (fmap deltifyEvents <$> eventMaps) tipHash
 
@@ -430,9 +435,7 @@ rebuildChain run@Run{genesis} flts fltNames xs@(fmap snd -> machViews) = do
             <> bfeErrs
             <> concatMap boeErrorsCrit os
             <> concatMap boeErrorsSoft os
-        , beNegAcceptance =
-            -- Again, here we find out filters which reject this block:
-            filter (not . testBlockEvents genesis blockEvents) flts
+        , beAcceptance = blockEventsAcceptance genesis flts blockEvents
         }
 
       adoptions =
@@ -488,7 +491,7 @@ blockProp run@Run{genesis} fullChain domSlot domBlock = do
     , bpVersion              = getVersion
     }
  where
-   analysisChain = filter (null . beNegAcceptance) fullChain
+   analysisChain = filter (all snd . beAcceptance) fullChain
 
    forgerEventsCDF   :: Divisible a => (BlockEvents -> Maybe a) -> CDF I a
    forgerEventsCDF   = flip (witherToDistrib (cdf stdCentiles)) analysisChain

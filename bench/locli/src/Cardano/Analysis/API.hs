@@ -83,8 +83,9 @@ data BlockEvents
                        -- ^ CDF of slot-start-to-adoptions on cluster
   , beOtherBlocks   :: [Hash]
   , beErrors        :: [BPError]
-  , beNegAcceptance :: [ChainFilter] -- ^ List of negative acceptance conditions,
-                                     --   preventing block's consideration for analysis.
+  , beAcceptance    :: [(ChainFilter, Bool)]
+                       -- ^ List of acceptance conditions,
+                       --   affecting block's consideration for analysis.
   }
   deriving (Generic, FromJSON, ToJSON, Show)
 
@@ -285,10 +286,6 @@ testBlockEvents g@Genesis{..}
     EpSlotGEq s -> snd (g `unsafeParseSlot` beSlotNo) >= s
     EpSlotLEq s -> snd (g `unsafeParseSlot` beSlotNo) <= s
 
-isValidBlockEvent :: Genesis -> [ChainFilter] -> BlockEvents -> Bool
-isValidBlockEvent g criteria be =
-  all (testBlockEvents g be) criteria
-
 isValidBlockObservation :: BlockObservation -> Bool
 isValidBlockObservation BlockObservation{..} =
   -- 1. All phases are present
@@ -451,7 +448,8 @@ instance RenderTimeline BlockEvents where
     , Field 4 0 "pPropag0.8"    (r!!1) "0.8"    (IDeltaT (percSpec 0.8  . bePropagation)) ""
     , Field 4 0 "pPropag0.96"   (r!!2) "0.96"   (IDeltaT (percSpec 0.96 . bePropagation)) ""
     , Field 4 0 "pPropag1.0"    (r!!3) "1.0"    (IDeltaT (snd . cdfRange . bePropagation)) ""
-    , Field 3 0 "valid"         "va-"  "lid"    (IText   (bool "-" "+" . (== 0) . length . beNegAcceptance)) ""
+    , Field 3 0 "valid"         "va-"  "lid"    (IText   (bool "-" "+" . (== 0) . length
+                                                          . filter (not . snd) . beAcceptance)) ""
     , Field 3 0 "valid.observ" "good"  "obsv"   (IInt    (length          . valids)) ""
     , Field 5 0 "errors"        "all"  "errs"   (IInt    (length . beErrors)) ""
     , Field 3 0 "missNotic"     (m!!0) "ntc"    (IInt    (count (bpeIsMissing Notice) . beErrors)) ""
@@ -500,7 +498,7 @@ instance RenderTimeline BlockEvents where
   rtCommentary BlockEvents{..} =
     \case
       BEErrors     -> ("           " <>) . show <$> beErrors
-      BEFilterOuts -> ("           " <>) . show <$> beNegAcceptance
+      BEFilterOuts -> ("           " <>) . show <$> filter (not . snd) beAcceptance
 
 --
 -- * Machine performance report subsetting
