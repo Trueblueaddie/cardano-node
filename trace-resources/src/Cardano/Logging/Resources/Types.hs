@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Cardano.Logging.Resources.Types
     ( Resources(..)
@@ -33,12 +34,16 @@ data Resources a
       , rHeap       :: !a
       , rRSS        :: !a
       , rCentiBlkIO :: !a
+      , rNetBytesRd :: !a
+      , rNetBytesWr :: !a
+      , rFsBytesRd  :: !a
+      , rFsBytesWr  :: !a
       , rThreads    :: !a
       }
   deriving (Functor, Generic, Show)
 
 instance Applicative Resources where
-  pure a = Resources a a a a a a a a a a a
+  pure a = Resources a a a a a a a a a a a a a a a
   f <*> x =
     Resources
     { rCentiCpu   = rCentiCpu   f (rCentiCpu   x)
@@ -51,6 +56,10 @@ instance Applicative Resources where
     , rHeap       = rHeap       f (rHeap       x)
     , rRSS        = rRSS        f (rRSS        x)
     , rCentiBlkIO = rCentiBlkIO f (rCentiBlkIO x)
+    , rNetBytesRd = rNetBytesRd f (rNetBytesRd x)
+    , rNetBytesWr = rNetBytesWr f (rNetBytesWr x)
+    , rFsBytesRd  = rFsBytesRd  f (rFsBytesRd  x)
+    , rFsBytesWr  = rFsBytesWr  f (rFsBytesWr  x)
     , rThreads    = rThreads    f (rThreads    x)
     }
 
@@ -76,30 +85,38 @@ docResourceStats :: Documented ResourceStats
 docResourceStats = Documented [
       DocMsg
         []
-        [("Resources.Stat.Cputicks", "Reports the CPU ticks, sice the process was started")
-        ,("Resources.Mem.Resident", "")
-        ,("Resources.RTS.GcLiveBytes", "")
-        ,("Resources.RTS.GcMajorNum", "")
-        ,("Resources.RTS.GcMinorNum", "")
-        ,("Resources.RTS.Gcticks", "")
-        ,("Resources.RTS.Mutticks", "")
-        ,("Resources.RTS.Threads","")
+        [("Resources.Stat.Cputicks", "Kernel-reported CPU ticks (1/100th of a second), since process start")
+        ,("Resources.Mem.Resident", "Kernel-reported RSS (resident set size)")
+        ,("Resources.RTS.GcLiveBytes", "RTS-reported live bytes")
+        ,("Resources.RTS.GcMajorNum", "Major GCs")
+        ,("Resources.RTS.GcMinorNum", "Minor GCs")
+        ,("Resources.RTS.Gcticks", "RTS-reported CPU ticks spent on GC")
+        ,("Resources.RTS.Mutticks", "RTS-reported CPU ticks spent on mutator")
+        ,("Resources.State.NetBytesRd", "IP packet bytes read")
+        ,("Resources.State.NetBytesWr", "IP packet bytes written")
+        ,("Resources.State.FsBytesRd", "FS bytes read")
+        ,("Resources.State.FsBytesWr", "FS bytes written")
+        ,("Resources.RTS.Threads","RTS green thread count")
         ]
         ""
     ]
 
 instance LogFormatting ResourceStats where
-    forHuman rs = "Resources:"
-                  <>  " Cpu Ticks "            <> (pack . show) (rCentiCpu rs)
-                  <> ", GC centiseconds "      <> (pack . show) (rCentiGC rs)
-                  <> ", Mutator centiseconds " <> (pack . show) (rCentiMut rs)
-                  <> ", GCs major "            <> (pack . show) (rGcsMajor rs)
-                  <> ", GCs minor "            <> (pack . show) (rGcsMinor rs)
-                  <> ", Allocated bytes "      <> (pack . show) (rAlloc rs)
-                  <>" , GC live bytes "        <> (pack . show) (rLive rs)
-                  <> ", RTS heap "             <> (pack . show) (rHeap rs)
-                  <> ", RSS "                  <> (pack . show) (rRSS rs)
-                  <> ", Threads "              <> (pack . show) (rThreads rs)
+    forHuman Resources{..} = "Resources:"
+                  <>  " Cpu Ticks "            <> (pack . show) rCentiCpu
+                  <> ", GC centiseconds "      <> (pack . show) rCentiGC
+                  <> ", Mutator centiseconds " <> (pack . show) rCentiMut
+                  <> ", GCs major "            <> (pack . show) rGcsMajor
+                  <> ", GCs minor "            <> (pack . show) rGcsMinor
+                  <> ", Allocated bytes "      <> (pack . show) rAlloc
+                  <>" , GC live bytes "        <> (pack . show) rLive
+                  <> ", RTS heap "             <> (pack . show) rHeap
+                  <> ", RSS "                  <> (pack . show) rRSS
+                  <> ", Net bytes read "       <> (pack . show) rNetBytesRd
+                  <> " written "               <> (pack . show) rNetBytesWr
+                  <> ", FS bytes read "        <> (pack . show) rFsBytesRd
+                  <> " written "               <> (pack . show) rFsBytesWr
+                  <> ", Threads "              <> (pack . show) rThreads
                   <> "."
 
     forMachine _dtal rs = mconcat
@@ -114,16 +131,27 @@ instance LogFormatting ResourceStats where
       , "Heap"          .= Number (fromIntegral $ rHeap rs)
       , "RSS"           .= Number (fromIntegral $ rRSS rs)
       , "CentiBlkIO"    .= Number (fromIntegral $ rCentiBlkIO rs)
+      , "NetBytesRd"    .= Number (fromIntegral $ rNetBytesRd rs)
+      , "NetBytesWr"    .= Number (fromIntegral $ rNetBytesWr rs)
+      , "FsBytesRd"     .= Number (fromIntegral $ rFsBytesRd rs)
+      , "FsBytesWr"     .= Number (fromIntegral $ rFsBytesWr rs)
       , "Threads"       .= Number (fromIntegral $ rThreads rs)
       ]
 
     asMetrics rs =
-      [ IntM "Resources.Stat.Cputicks" (fromIntegral $ rCentiCpu rs)
-      , IntM "Resources.Mem.Resident" (fromIntegral $ rRSS rs)
-      , IntM "Resources.RTS.GcLiveBytes" (fromIntegral $ rLive rs)
-      , IntM "Resources.RTS.GcMajorNum" (fromIntegral $ rGcsMajor rs)
-      , IntM "Resources.RTS.GcMinorNum" (fromIntegral $ rGcsMinor rs)
-      , IntM "Resources.RTS.Gcticks" (fromIntegral $ rCentiGC rs)
-      , IntM "Resources.RTS.Mutticks" (fromIntegral $ rCentiMut rs)
+      [ IntM "Resources.Stat.Cputicks"    (fromIntegral $ rCentiCpu rs)
+      , IntM "Resources.RTS.Gcticks"      (fromIntegral $ rCentiGC rs)
+      , IntM "Resources.RTS.Mutticks"     (fromIntegral $ rCentiMut rs)
+      , IntM "Resources.RTS.GcMajorNum"   (fromIntegral $ rGcsMajor rs)
+      , IntM "Resources.RTS.GcMinorNum"   (fromIntegral $ rGcsMinor rs)
+      , IntM "Resources.RTS.Alloc"        (fromIntegral $ rAlloc rs)
+      , IntM "Resources.RTS.GcLiveBytes"  (fromIntegral $ rLive rs)
+      , IntM "Resources.RTS.Heap"         (fromIntegral $ rHeap rs)
+      , IntM "Resources.Mem.Resident"     (fromIntegral $ rRSS rs)
+      , IntM "Resources.Stat.BlkIOticks"  (fromIntegral $ rCentiBlkIO rs)
+      , IntM "Resources.State.NetBytesRd" (fromIntegral $ rNetBytesRd rs)
+      , IntM "Resources.State.NetBytesWr" (fromIntegral $ rNetBytesWr rs)
+      , IntM "Resources.State.FsBytesRd"  (fromIntegral $ rFsBytesRd rs)
+      , IntM "Resources.State.FsBytesWr"  (fromIntegral $ rFsBytesWr rs)
       , IntM "Resources.RTS.Stat.Threads" (fromIntegral $ rThreads rs)
       ]

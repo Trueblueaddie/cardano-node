@@ -41,6 +41,10 @@ mkResAccums =
   , rLive        = mkAccumNew   `divAccum` 1048576
   , rAlloc       = mkAccumDelta `divAccum` 1048576
   , rCentiBlkIO  = mkAccumTicksShare
+  , rNetBytesRd  = mkAccumDelta   `divAccum` 1024
+  , rNetBytesWr  = mkAccumDelta   `divAccum` 1024
+  , rFsBytesRd   = mkAccumDelta   `divAccum` 1024
+  , rFsBytesWr   = mkAccumDelta   `divAccum` 1024
   , rThreads     = mkAccumNew
   }
 
@@ -80,5 +84,9 @@ discardObsoleteValues =
   , rLive        = Just
   , rAlloc       = const Nothing
   , rCentiBlkIO  = Just
+  , rNetBytesRd  = const Nothing
+  , rNetBytesWr  = const Nothing
+  , rFsBytesRd   = const Nothing
+  , rFsBytesWr   = const Nothing
   , rThreads     = Just
   }

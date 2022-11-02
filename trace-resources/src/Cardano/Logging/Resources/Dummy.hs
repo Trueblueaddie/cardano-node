@@ -25,6 +25,10 @@ readResourceStatsInternal = do
     , rRSS        = 0
     , rHeap       = 0
     , rCentiBlkIO = 0
+    , rNetBytesRd = 0
+    , rNetBytesWr = 0
+    , rFsBytesRd  = 0
+    , rFsBytesWr  = 0
     , rThreads    = 0
     }
  where

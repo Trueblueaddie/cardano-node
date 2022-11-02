@@ -237,6 +237,10 @@ slotStatsMachPerf run (f, slots) =
      , rLive        = rLive       . slResources
      , rAlloc       = rAlloc      . slResources
      , rCentiBlkIO  = rCentiBlkIO . slResources
+     , rNetBytesRd  = rNetBytesRd . slResources
+     , rNetBytesWr  = rNetBytesWr . slResources
+     , rFsBytesRd   = rFsBytesRd  . slResources
+     , rFsBytesWr   = rFsBytesWr  . slResources
      , rThreads     = rThreads    . slResources
      }
 

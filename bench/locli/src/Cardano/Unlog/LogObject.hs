@@ -385,16 +385,20 @@ extendObject k _ _ = error . Text.unpack $ "Summary key '" <> k <> "' does not s
 parsePartialResourceStates :: Value -> Parser (Resources Word64)
 parsePartialResourceStates =
   AE.withObject "NodeSetup" $
-    \o ->
-      Resources
-      <$> o .: "CentiCpu"
-      <*> o .: "CentiGC"
-      <*> o .: "CentiMut"
-      <*> o .: "GcsMajor"
-      <*> o .: "GcsMinor"
-      <*> o .: "Alloc"
-      <*> o .: "Live"
-      <*> (o .:? "Heap" <&> fromMaybe 0)
-      <*> o .: "RSS"
-      <*> o .: "CentiBlkIO"
-      <*> o .: "Threads"
+    \o -> do
+      rCentiCpu   <- o .:  "CentiCpu"
+      rCentiGC    <- o .:  "CentiGC"
+      rCentiMut   <- o .:  "CentiMut"
+      rGcsMajor   <- o .:  "GcsMajor"
+      rGcsMinor   <- o .:  "GcsMinor"
+      rAlloc      <- o .:  "Alloc"
+      rLive       <- o .:? "Heap"       <&> fromMaybe 0
+      rHeap       <- o .:  "Live"
+      rRSS        <- o .:  "RSS"
+      rCentiBlkIO <- o .:  "CentiBlkIO"
+      rNetBytesRd <- o .:? "NetBytesRd" <&> fromMaybe 0
+      rNetBytesWr <- o .:? "NetBytesWr" <&> fromMaybe 0
+      rFsBytesRd  <- o .:? "FsBytesRd"  <&> fromMaybe 0
+      rFsBytesWr  <- o .:? "FsBytesWr"  <&> fromMaybe 0
+      rThreads    <- o .:  "Threads"
+      pure Resources{..}
