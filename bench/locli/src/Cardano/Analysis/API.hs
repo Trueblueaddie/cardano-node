@@ -108,18 +108,19 @@ data BlockForge
   }
   deriving (Generic, FromJSON, ToJSON, Show)
 
-allBlockForgeTimes :: (NominalDiffTime -> Bool) -> BlockForge -> Bool
+allBlockForgeTimes :: Monoid (f Text) =>
+  (Text -> NominalDiffTime -> f Text) -> BlockForge -> f Text
 allBlockForgeTimes f BlockForge{..}
-  =             f bfBlockGap
-  &&            f bfStarted
-  && maybe True f bfBlkCtx
-  && maybe True f bfLgrState
-  && maybe True f bfLgrView
-  &&            f bfLeading
-  &&            f bfForged
-  &&            f bfAnnounced
-  &&            f bfSending
-  &&            f bfAdopted
+  =                f "bfBlockGap"  bfBlockGap
+  <>               f "bfStarted"   bfStarted
+  <> maybe mempty (f "bfBlkCtx")   bfBlkCtx
+  <> maybe mempty (f "bfLgrState") bfLgrState
+  <> maybe mempty (f "bfLgrView")  bfLgrView
+  <>               f "bfLeading"   bfLeading
+  <>               f "bfForged"    bfForged
+  <>               f "bfAnnounced" bfAnnounced
+  <>               f "bfSending"   bfSending
+  <>               f "bfAdopted"   bfAdopted
 
 data BlockObservation
   =  BlockObservation
@@ -137,14 +138,15 @@ data BlockObservation
   }
   deriving (Generic, FromJSON, ToJSON, Show)
 
-allBlockObservationTimes :: (NominalDiffTime -> Bool) -> BlockObservation -> Bool
+allBlockObservationTimes :: (Monoid (f Text)) =>
+  (Text -> NominalDiffTime -> f Text) -> BlockObservation -> f Text
 allBlockObservationTimes f BlockObservation{..}
-  =             f boNoticed
-  &&            f boRequested
-  &&            f boFetched
-  && maybe True f boAnnounced
-  && maybe True f boSending
-  && maybe True f boAdopted
+  =                f "boNoticed"    boNoticed
+  <>               f "boRequested"  boRequested
+  <>               f "boFetched"    boFetched
+  <> maybe mempty (f "boAnnounced") boAnnounced
+  <> maybe mempty (f "boSending"  ) boSending
+  <> maybe mempty (f "boAdopted"  ) boAdopted
 
 data BPError
   = BPError
@@ -273,8 +275,11 @@ testBlockEvents g@Genesis{..}
     BSizeGEq x -> bfBlockSize >= fromIntegral x
     BSizeLEq x -> bfBlockSize <= fromIntegral x
     BMinimumAdoptions x -> count (isJust . boAdopted) seen >= fromIntegral x
-    BNonNegatives ->      allBlockForgeTimes       (>= 0) forge &&
-                     all (allBlockObservationTimes (>= 0)) seen
+    BNonNegatives -> null $
+                 allBlockForgeTimes       noteFieldIfNeg forge <>
+      concatMap (allBlockObservationTimes noteFieldIfNeg) seen
+     where noteFieldIfNeg :: Text -> NominalDiffTime -> [Text]
+           noteFieldIfNeg f x = [ f | x >= 0 ]
   CSlot flt -> case flt of
     SlotGEq s -> beSlotNo >= s
     SlotLEq s -> beSlotNo <= s
