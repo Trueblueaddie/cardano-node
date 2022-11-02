@@ -25,6 +25,10 @@ usage_analyse() {
      $(blk trace-freq freq)          Classify trace messages by namespace frequency.
                                        Output will be stored in a filename derived from argument.
 
+    $(helpcmd chain-rejecta-reasons LOGFILENAME)
+     $(blk chain-rejecta rejecta)    Dump chain rejecta block timeline.
+                                       Note that only chain filter tags are printed
+
   $(red analyse) $(blue options):
 
     $(helpopt --filters F,F,F..)  Comma-separated list of named chain filters:  see bench/chain-filters
@@ -517,6 +521,24 @@ case "$op" in
         then local col=red; else local col=green; fi
         progress    "trace-freq" "total in source: $(white           $src)"
         progress_ne "trace-freq" "total counted:   $(with_color $col $res)";;
+
+    chain-rejecta-reasons | chain-rejecta | rejecta )
+        local usage="USAGE: wb analyse $op [RUN-NAME=current]"
+
+        local name=${1:-current}; if test $# != 0; then shift; fi
+        local dir=$(run get "$name")
+        test -n "$dir" || fail "malformed run: $name"
+        local rejecta=$dir/analysis/chain-rejecta.json
+
+        jq '.beBlockNo as $no
+          | .beAcceptance
+          | { block: $no
+            , nacks: map( select(.[1] == false)
+                        | .[0].contents.tag)
+            }
+          '   $rejecta --compact-output
+        wc -l $rejecta
+        ;;
 
     * ) progress "analyse" "unexpected 'analyse' subop:  $(red $op)"
         usage_analyse;; esac
