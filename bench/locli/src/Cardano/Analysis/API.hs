@@ -107,6 +107,19 @@ data BlockForge
   }
   deriving (Generic, FromJSON, ToJSON, Show)
 
+allBlockForgeTimes :: (NominalDiffTime -> Bool) -> BlockForge -> Bool
+allBlockForgeTimes f BlockForge{..}
+  =             f bfBlockGap
+  &&            f bfStarted
+  && maybe True f bfBlkCtx
+  && maybe True f bfLgrState
+  && maybe True f bfLgrView
+  &&            f bfLeading
+  &&            f bfForged
+  &&            f bfAnnounced
+  &&            f bfSending
+  &&            f bfAdopted
+
 data BlockObservation
   =  BlockObservation
   { boObserver   :: !Host
@@ -122,6 +135,15 @@ data BlockObservation
   , boErrorsSoft :: [BPError]
   }
   deriving (Generic, FromJSON, ToJSON, Show)
+
+allBlockObservationTimes :: (NominalDiffTime -> Bool) -> BlockObservation -> Bool
+allBlockObservationTimes f BlockObservation{..}
+  =             f boNoticed
+  &&            f boRequested
+  &&            f boFetched
+  && maybe True f boAnnounced
+  && maybe True f boSending
+  && maybe True f boAdopted
 
 data BPError
   = BPError
@@ -238,7 +260,7 @@ data SlotStats a
 --
 testBlockEvents :: Genesis -> BlockEvents -> ChainFilter -> Bool
 testBlockEvents g@Genesis{..}
-                BlockEvents{beForge=BlockForge{..}
+                BlockEvents{beForge=forge@BlockForge{..}
                            ,beObservations=seen
                            ,..} = \case
   CBlock flt -> case flt of
@@ -250,6 +272,8 @@ testBlockEvents g@Genesis{..}
     BSizeGEq x -> bfBlockSize >= fromIntegral x
     BSizeLEq x -> bfBlockSize <= fromIntegral x
     BMinimumAdoptions x -> count (isJust . boAdopted) seen >= fromIntegral x
+    BNonNegatives ->      allBlockForgeTimes       (>= 0) forge &&
+                     all (allBlockObservationTimes (>= 0)) seen
   CSlot flt -> case flt of
     SlotGEq s -> beSlotNo >= s
     SlotLEq s -> beSlotNo <= s

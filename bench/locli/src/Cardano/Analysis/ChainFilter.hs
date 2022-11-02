@@ -41,6 +41,7 @@ data BlockCond
   | BSizeGEq               Word64
   | BSizeLEq               Word64
   | BMinimumAdoptions      Word64 -- ^ At least this many adoptions
+  | BNonNegatives                 -- ^ Non-negative timings only
   deriving (FromJSON, Generic, NFData, Show, ToJSON)
 
 data SlotCond
