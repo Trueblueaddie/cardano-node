@@ -54,9 +54,11 @@ else global_rundir=$global_rundir_def
      mkdir "$global_rundir"
 fi
 
+run_aws_get_args=()
 while test $# -gt 0
 do case "$1" in
        --rundir ) global_rundir=$2; shift;;
+       --clean | -c )  run_aws_get_args+=($1);;
        * ) break;; esac; shift; done
 
 local op=${1:-list}; test $# -gt 0 && shift
@@ -462,10 +464,11 @@ case "$op" in
                      2>/dev/null)
                 )
                 local args=(
+                   "${run_aws_get_args[@]}"
                    "$env"
                    "$depl"
                    "$run"
-                   'if test -f compressed/logs-$obj.tar.zst; then cat compressed/logs-$obj.tar.zst; else tar c $obj --zstd --ignore-failed-read; fi'
+                   'tar c ${files[*]} --zstd'
 
                    common-run-files
                    ${analysis_files[*]}
@@ -647,21 +650,34 @@ EOF
 
 run_aws_get() {
     local usage='USAGE: run_aws_get ENV DEPLOYMENT RUN REMOTE-TAR-CMD OBJ..'
+    local clean=
+    while test $# -gt 0
+    do case "$1" in
+           --clean | -c ) clean='true';;
+           -- ) shift; break;;
+           --* ) msg "FATAL:  unknown flag '$1'"; fail "$usage";;
+           * ) break;; esac; shift; done
+
     local env=${1:?$usage}; shift
     local depl=${1:?$usage}; shift
     local run=${1:?$usage}; shift
     local remote_tar_cmd=${1:?$usage}; shift
     local objects=($*)
 
-    progress "aws-get" "env $(yellow $env) depl $(yellow $depl) run $(white $run)"
-    progress "aws-get" "tar $(green $remote_tar_cmd) objects ${objects[*]}"
+    progress "run_aws_get" "env $(yellow $env) depl $(yellow $depl) run $(white $run)"
+    progress "run_aws_get" "tar $(green $remote_tar_cmd)"
 
     local meta=$(ssh $env -- sh -c "'jq . $depl/runs/$run/meta.json'")
     if ! jq . <<<$meta >/dev/null
-    then fail "allocate-from-aws:  malformed $(yellow meta.json) in $(white $run) on $(white $depl)@$(white env)"; fi
+    then fail "run_aws_get:  malformed $(yellow meta.json) in $(white $run) on $(white $depl)@$(white env)"; fi
 
     ## Minor validation passed, create & populate run with remote data:
     local dir=$global_rundir/$run
+    if test -z "$run" -o -z "$global_rundir"
+    then fail "run_aws_get: run=$run global_rundir=$global_rundir"
+    elif test -n "$clean"
+    then rm -rf "$dir"
+    fi
     mkdir -p "$dir"
     jq . <<<$meta > $dir/meta.json
 
@@ -678,24 +694,25 @@ run_aws_get() {
     local xs=(${xs2[*]})
 
     local count=${#xs[*]}
-    progress "run | aws-get $(white $run)" "objects to fetch:  $(white $count) total:  $(yellow ${xs[*]})"
+    progress "run | aws-get $(white $run)" "objects to fetch:  $(white $count) total"
 
     local max_batch=9 base=0 batch
     while test $base -lt $count
     do local batch=(${xs[*]:$base:$max_batch})
-       progress_ne "run | aws-get $(white $run)" "fetching batch: "
-       local obj=
-       for obj in ${batch[*]}
-       do { ssh $env -- \
-                sh -c "'obj=${obj}; cd $depl/runs/$run && ${remote_tar_cmd}'" 2>/dev/null |
-                (cd $dir; tar x --zstd)
-            echo -ne " $(yellow $obj)" >&2
-          } &
-       done
-       wait
-       echo >&2
+       {
+           local lbatch=(${batch[*]})
+           ssh $env -- \
+               sh -c "'files=(${lbatch[*]}); cd $depl/runs/$run && ${remote_tar_cmd}'" |
+               (cd $dir
+                tar x --zstd ||
+                    progress "aws-get error" "'files=(${lbatch[*]}); cd $depl/runs/$run && ${remote_tar_cmd}'"
+               )
+           progress "run | aws-get $(white $run)" "batch done:  $(yellow ${batch[*]})"
+       } &
+       sleep 1
        base=$((base + max_batch))
     done
+    wait
 
     progress "run | aws-get" "adding manifest"
     jq_fmutate "$dir"/meta.json '.meta.manifest = $manifest
