@@ -78,12 +78,12 @@ data BlockEvents
   , beEpochNo       :: !EpochNo
   , beEpochSafeInt  :: !EpochSafeInt
   , beForge         :: !BlockForge
-  , beObservations  :: [BlockObservation]
+  , beObservations  :: ![BlockObservation]
   , bePropagation   :: !(CDF I NominalDiffTime)
                        -- ^ CDF of slot-start-to-adoptions on cluster
-  , beOtherBlocks   :: [Hash]
-  , beErrors        :: [BPError]
-  , beAcceptance    :: [(ChainFilter, Bool)]
+  , beOtherBlocks   :: ![Hash]
+  , beErrors        :: ![BPError]
+  , beAcceptance    :: ![(ChainFilter, Bool)]
                        -- ^ List of acceptance conditions,
                        --   affecting block's consideration for analysis.
   }
@@ -133,8 +133,8 @@ data BlockObservation
   , boSending    :: !(Maybe NominalDiffTime) -- ^ Since announcement
   , boAdopted    :: !(Maybe NominalDiffTime) -- ^ Since announcement
   , boChainDelta :: !Int                     -- ^ ChainDelta during adoption
-  , boErrorsCrit :: [BPError]
-  , boErrorsSoft :: [BPError]
+  , boErrorsCrit :: ![BPError]
+  , boErrorsSoft :: ![BPError]
   }
   deriving (Generic, FromJSON, ToJSON, Show)
 
