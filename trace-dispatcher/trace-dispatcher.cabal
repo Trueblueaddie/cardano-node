@@ -160,6 +160,8 @@ test-suite trace-dispatcher-test
                       , yaml
                       , QuickCheck
 
+  build-tool-depends:   cardano-tracer:cardano-tracer
+
   ghc-options:         -Wall
                        -Wcompat
                        -Wincomplete-uni-patterns
