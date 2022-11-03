@@ -57,6 +57,15 @@ jobs:
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-libsodium
           mingw-w64-x86_64-jq
+          mingw-w64-x86_64-openssl
+
+    - name: "WIN: Setup additional gcc paths"
+      if: runner.os == 'Windows'
+      # This fixes the problem where pkg-config points the gcc compiler to use libraries and
+      # header files but gcc can't find them because it doesn't know where they can be found.
+      run: |
+        echo "C_INCLUDE_PATH=D:/a/_temp/msys64/mingw64/include;$C_INCLUDE_PATH" >> $GITHUB_ENV
+        echo "LIBRARY_PATH=D:/a/_temp/msys64/mingw64/lib;$LIBRARY_PATH" >> $GITHUB_ENV
 
     - name: "LINUX,MAC: Setup haskell"
       if: runner.os != 'Windows'
