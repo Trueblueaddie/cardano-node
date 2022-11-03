@@ -10,6 +10,7 @@ where
 
 import Prelude                          (String, fail, show)
 import Cardano.Prelude                  hiding (head)
+import Unsafe.Coerce                    qualified as Unsafe
 
 import Control.Monad.Trans.Except.Extra (firstExceptT, newExceptT)
 import Data.Aeson
@@ -51,6 +52,17 @@ instance ToJSONKey Hash where
   toJSONKey = toJSONKeyText (toText . unHash)
 instance FromJSONKey Hash where
   fromJSONKey = FromJSONKeyText (Hash . fromText)
+
+newtype Count a = Count { unCount :: Int }
+  deriving (Eq, Generic, Ord, Show)
+  deriving newtype (FromJSON, ToJSON)
+  deriving anyclass NFData
+
+mkCount :: [a] -> Count a
+mkCount = Count . fromIntegral . length
+
+unsafeCoerceCount :: Count a -> Count b
+unsafeCoerceCount = Unsafe.unsafeCoerce
 
 newtype Host = Host { unHost :: ShortText }
   deriving (Eq, Generic, Ord)

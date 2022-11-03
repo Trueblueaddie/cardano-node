@@ -72,6 +72,7 @@ summariseMultiBlockProp centiles bs@(headline:_) = do
   cdfPeerAdoptions          <- cdf2OfCDFs comb $ bs <&> cdfPeerAdoptions
   cdfPeerAnnouncements      <- cdf2OfCDFs comb $ bs <&> cdfPeerAnnouncements
   cdfPeerSends              <- cdf2OfCDFs comb $ bs <&> cdfPeerSends
+  cdfForks                  <- cdf2OfCDFs comb $ bs <&> cdfForks
   cdfSizes                  <- cdf2OfCDFs comb $ bs <&> cdfSizes
   bpPropagation            <- sequence $ transpose (bs <&> bpPropagation) <&>
     \case
@@ -410,6 +411,7 @@ rebuildChain run@Run{genesis} flts fltNames xs@(fmap snd -> machViews) = do
                            & handleMiss "Δt Adopted (forger)"
           , bfChainDelta = bfeChainDelta
           }
+        , beForks = unsafeCoerceCount $ mkCount otherBlocks
         , beObservations =
             catMaybes $
             os <&> \ObserverEvents{..}->
@@ -426,12 +428,11 @@ rebuildChain run@Run{genesis} flts fltNames xs@(fmap snd -> machViews) = do
                 <*> Just boeErrorsCrit
                 <*> Just boeErrorsSoft
         , bePropagation  = cdf adoptionCentiles adoptions
-        , beOtherBlocks  = otherBlocks
+        , beOtherBlocks  = otherBlocks <&>
+                           \(ForgerEvents{bfeBlock}, _) -> bfeBlock
         , beErrors =
             errs
-            <> (otherBlocks <&>
-                \blk ->
-                  fail' (findForger blk) bfeBlock $ BPEFork blk)
+            <> (otherBlocks <&> snd)
             <> bfeErrs
             <> concatMap boeErrorsCrit os
             <> concatMap boeErrorsSoft os
@@ -441,16 +442,21 @@ rebuildChain run@Run{genesis} flts fltNames xs@(fmap snd -> machViews) = do
       adoptions =
         (fmap (`sinceSlot` bfeSlotStart) . Map.lookup bfeBlock) `mapMaybe` adoptionMap
 
-      otherBlocks = Map.lookup bfeBlockNo heightMap
-                    & handleMiss "height map"
-                    & Set.delete bfeBlock
-                    & Set.toList
+      otherBlocks = otherBlockHashes <&>
+                    \blk ->
+                      let forger = findForger blk in
+                      (forger,
+                       fail' (bfeHost forger) bfeBlock (BPEFork blk))
+      otherBlockHashes = Map.lookup bfeBlockNo heightMap
+                         & handleMiss "height map"
+                         & Set.delete bfeBlock
+                         & Set.toList
 
-      findForger :: Hash -> Host
+      findForger :: Hash -> ForgerEvents UTCTime
       findForger hash =
         maybe
-          (Host "?")
-          (mapMbe bfeHost (error "Invariant failed") (error "Invariant failed"))
+          (error $ "Unknown host for block " <> show hash)
+          (mapMbe id (error "Invariant failed") (error "Invariant failed"))
           (mapMaybe (Map.lookup hash) eventMaps
            & find mbeForgP)
 
@@ -487,6 +493,7 @@ blockProp run@Run{genesis} fullChain domSlot domBlock = do
     , bpPropagation          =
       [ (p', forgerEventsCDF (Just . unI . projectCDF' "bePropagation" p . bePropagation))
       | p@(Centile p') <- adoptionCentiles <> [Centile 1.0] ]
+    , cdfForks               = forgerEventsCDF   (Just . unCount . beForks)
     , cdfSizes               = forgerEventsCDF   (Just . bfBlockSize . beForge)
     , bpVersion              = getVersion
     }

@@ -47,14 +47,14 @@ summariseMultiClusterPerf centiles mps@(headline:_) = do
   cdfSpanLensCpu       <- cdf2OfCDFs comb $ mps <&> cdfSpanLensCpu
   cdfSpanLensCpuEpoch  <- cdf2OfCDFs comb $ mps <&> cdfSpanLensCpuEpoch
   cdfSpanLensCpuRwd    <- cdf2OfCDFs comb $ mps <&> cdfSpanLensCpuRwd
-  sResourceCDFs         <- sequence $ traverse identity (mps <&> sResourceCDFs) <&>
+  mpResourceCDFs       <- sequence $ traverse identity (mps <&> mpResourceCDFs) <&>
     \case
       [] -> Left CDFEmptyDataset
       (xs :: [CDF (CDF I) Word64]) -> cdf2OfCDFs comb xs :: Either CDFError (CDF (CDF I) Word64)
 
   pure . MultiClusterPerf $ MachPerf
-    { sVersion          = sVersion headline
-    , sDomainSlots      = dataDomainsMergeOuter $ mps <&> sDomainSlots
+    { mpVersion          = mpVersion headline
+    , mpDomainSlots      = dataDomainsMergeOuter $ mps <&> mpDomainSlots
     , ..
     }
  where
@@ -78,14 +78,14 @@ summariseClusterPerf centiles mps@(headline:_) = do
   cdfSpanLensCpu       <- cdf2OfCDFs comb $ mps <&> cdfSpanLensCpu
   cdfSpanLensCpuEpoch  <- cdf2OfCDFs comb $ mps <&> cdfSpanLensCpuEpoch
   cdfSpanLensCpuRwd    <- cdf2OfCDFs comb $ mps <&> cdfSpanLensCpuRwd
-  sResourceCDFs        <- sequence $ traverse identity (mps <&> sResourceCDFs) <&>
+  mpResourceCDFs       <- sequence $ traverse identity (mps <&> mpResourceCDFs) <&>
     \case
       [] -> Left CDFEmptyDataset
       (xs :: [CDF I Word64]) -> cdf2OfCDFs comb xs :: Either CDFError (CDF (CDF I) Word64)
 
   pure MachPerf
-    { sVersion          = sVersion headline
-    , sDomainSlots      = dataDomainsMergeOuter $ mps <&> sDomainSlots
+    { mpVersion          = mpVersion headline
+    , mpDomainSlots      = dataDomainsMergeOuter $ mps <&> mpDomainSlots
     , ..
     }
  where
@@ -199,9 +199,9 @@ slotStatsMachPerf _ (JsonLogfile f, []) =
   Left $ "slotStatsMachPerf:  zero filtered slots from " <> pack f
 slotStatsMachPerf run (f, slots) =
   Right . (f,) $ MachPerf
-  { sVersion              = getVersion
-  , sDomainSlots          = mkDataDomainInj (slSlot $ head slots) (slSlot $ last slots)
-                                            (fromIntegral . unSlotNo)
+  { mpVersion            = getVersion
+  , mpDomainSlots        = mkDataDomainInj (slSlot $ head slots) (slSlot $ last slots)
+                                           (fromIntegral . unSlotNo)
   --
   , cdfMiss              = dist sssMissRatios
   , cdfLeads             = dist (slCountLeads <$> slots)
@@ -217,7 +217,7 @@ slotStatsMachPerf run (f, slots) =
   , cdfSpanLensCpu       = dist sssSpanLensCpu
   , cdfSpanLensCpuEpoch  = dist sssSpanLensCpuEpoch
   , cdfSpanLensCpuRwd    = dist sssSpanLensCpuRwd
-  , sResourceCDFs         = computeResCDF stdCentiles resDistProjs slots
+  , mpResourceCDFs       = computeResCDF stdCentiles resDistProjs slots
   }
  where
    dist :: Divisible a => [a] -> CDF I a

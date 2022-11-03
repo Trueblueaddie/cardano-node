@@ -16,7 +16,7 @@ import Cardano.Prelude          hiding (head)
 import Data.Aeson               (ToJSON(..), FromJSON(..))
 import Data.Text                qualified as T
 import Data.Text.Short          (toText)
-import Data.Time.Clock          (NominalDiffTime)
+import Data.Time.Clock          (NominalDiffTime, UTCTime)
 import Options.Applicative      qualified as Opt
 import Text.Printf              (PrintfArg)
 
@@ -57,13 +57,14 @@ data BlockProp f
     , cdfPeerAnnouncements   :: !(CDF f NominalDiffTime)
     , cdfPeerAdoptions       :: !(CDF f NominalDiffTime)
     , cdfPeerSends           :: !(CDF f NominalDiffTime)
+    , cdfForks               :: !(CDF f Int)
     , cdfSizes               :: !(CDF f Int)
     , bpPropagation          :: ![(Double, CDF f NominalDiffTime)]
     }
   deriving (Generic)
-deriving instance (Show     (f NominalDiffTime), Show     (f Int)) => Show     (BlockProp f)
-deriving instance (FromJSON (f NominalDiffTime), FromJSON (f Int)) => FromJSON (BlockProp f)
-deriving instance (ToJSON   (f NominalDiffTime), ToJSON   (f Int)) => ToJSON   (BlockProp f)
+deriving instance (Show     (f NominalDiffTime), Show     (f Int), Show     (f (Count BlockEvents))) => Show     (BlockProp f)
+deriving instance (FromJSON (f NominalDiffTime), FromJSON (f Int), FromJSON (f (Count BlockEvents))) => FromJSON (BlockProp f)
+deriving instance (ToJSON   (f NominalDiffTime), ToJSON   (f Int), ToJSON   (f (Count BlockEvents))) => ToJSON   (BlockProp f)
 
 type BlockPropOne   = BlockProp I
 type MultiBlockProp = BlockProp (CDF I)
@@ -79,6 +80,7 @@ data BlockEvents
   , beEpochSafeInt  :: !EpochSafeInt
   , beForge         :: !BlockForge
   , beObservations  :: ![BlockObservation]
+  , beForks         :: !(Count BlockEvents)
   , bePropagation   :: !(CDF I NominalDiffTime)
                        -- ^ CDF of slot-start-to-adoptions on cluster
   , beOtherBlocks   :: ![Hash]
@@ -183,8 +185,8 @@ data BPErrorKind
 -- | The top-level representation of the machine timeline analysis results.
 data MachPerf f
   = MachPerf
-    { sVersion             :: !Cardano.Analysis.Version.Version
-    , sDomainSlots         :: !(DataDomain SlotNo)
+    { mpVersion             :: !Cardano.Analysis.Version.Version
+    , mpDomainSlots         :: !(DataDomain SlotNo)
     -- distributions
     , cdfMiss              :: !(CDF f Double)
     , cdfLeads             :: !(CDF f Word64)
@@ -200,7 +202,7 @@ data MachPerf f
     , cdfSpanLensCpu       :: !(CDF f Int)
     , cdfSpanLensCpuEpoch  :: !(CDF f Int)
     , cdfSpanLensCpuRwd    :: !(CDF f Int)
-    , sResourceCDFs        :: !(Resources (CDF f Word64))
+    , mpResourceCDFs       :: !(Resources (CDF f Word64))
     }
   deriving (Generic)
 
@@ -402,6 +404,7 @@ instance RenderCDFs BlockProp p where
     , Field 4 0 "pAnnounced"    (p!!3) "Anno" (DDeltaT cdfPeerAnnouncements)   "Fetched to announced"
     , Field 4 0 "pSendStart"    (p!!4) "Send" (DDeltaT cdfPeerSends)           "Announced to sending"
     , Field 4 0 "pAdopted"      (p!!5) "Adop" (DDeltaT cdfPeerAdoptions)       "Announced to adopted"
+    , Field 4 0 "forks"         "das" "forks" (DInt    cdfForks)               "Forks at this block height"
     ] ++
     [ Field 4 0 (renderAdoptionCentile ct)
                                 (r!!i)
@@ -542,15 +545,15 @@ instance RenderCDFs MachPerf p where
     , Field 4 0 "forgeΔ"        (d!!5)  "Forge" (DDeltaT            cdfForged)      "Leading to block forged"
     , Field 4 0 "blockGap"      "Block" "gap"   (DWord64            cdfBlockGap)    "Interblock gap"
     , Field 5 0 "chainDensity"  "Dens"  "ity"   (DFloat             cdfDensity)     "Chain density"
-    , Field 3 0 "cpuProcess"    "CPU"   "%"     (DWord64 (rCentiCpu.sResourceCDFs)) "Process CPU usage pct"
-    , Field 3 0 "cpuGC"         "GC"    "%"     (DWord64 (rCentiGC .sResourceCDFs)) "RTS GC CPU usage pct"
-    , Field 3 0 "cpuMutator"    "MUT"   "%"     (DWord64 (rCentiMut.sResourceCDFs)) "RTS Mutator CPU usage pct"
-    , Field 3 0 "gcMajor"       "GC "   "Maj"   (DWord64 (rGcsMajor.sResourceCDFs)) "Major GCs Hz"
-    , Field 3 0 "gcMinor"       "flt "  "Min"   (DWord64 (rGcsMinor.sResourceCDFs)) "Minor GCs Hz"
-    , Field 5 0 "memRSS"        (m!!0)  "RSS"   (DWord64 (rRSS     .sResourceCDFs)) "Kernel RSS MB"
-    , Field 5 0 "rtsHeap"       (m!!1)  "Heap"  (DWord64 (rHeap    .sResourceCDFs)) "RTS heap size MB"
-    , Field 5 0 "rtsLiveBytes"  (m!!2)  "Live"  (DWord64 (rLive    .sResourceCDFs)) "RTS GC live bytes MB"
-    , Field 5 0 "rtsAllocation" "Alloc" "MB"    (DWord64 (rAlloc   .sResourceCDFs)) "RTS alloc rate MB sec"
+    , Field 3 0 "cpuProcess"    "CPU"   "%"     (DWord64 (rCentiCpu.mpResourceCDFs)) "Process CPU usage pct"
+    , Field 3 0 "cpuGC"         "GC"    "%"     (DWord64 (rCentiGC .mpResourceCDFs)) "RTS GC CPU usage pct"
+    , Field 3 0 "cpuMutator"    "MUT"   "%"     (DWord64 (rCentiMut.mpResourceCDFs)) "RTS Mutator CPU usage pct"
+    , Field 3 0 "gcMajor"       "GC "   "Maj"   (DWord64 (rGcsMajor.mpResourceCDFs)) "Major GCs Hz"
+    , Field 3 0 "gcMinor"       "flt "  "Min"   (DWord64 (rGcsMinor.mpResourceCDFs)) "Minor GCs Hz"
+    , Field 5 0 "memRSS"        (m!!0)  "RSS"   (DWord64 (rRSS     .mpResourceCDFs)) "Kernel RSS MB"
+    , Field 5 0 "rtsHeap"       (m!!1)  "Heap"  (DWord64 (rHeap    .mpResourceCDFs)) "RTS heap size MB"
+    , Field 5 0 "rtsLiveBytes"  (m!!2)  "Live"  (DWord64 (rLive    .mpResourceCDFs)) "RTS GC live bytes MB"
+    , Field 5 0 "rtsAllocation" "Alloc" "MB"    (DWord64 (rAlloc   .mpResourceCDFs)) "RTS alloc rate MB sec"
     , Field 5 0 "cpuSpanLenAll" (c!!0)  "All"   (DInt               cdfSpanLensCpu) "CPU 85pct spans"
     , Field 5 0 "cpuSpanLenEp"  (c!!1)  "Epoch" (DInt          cdfSpanLensCpuEpoch) "CPU spans at Ep boundary"
     ]
