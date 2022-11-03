@@ -22,6 +22,8 @@ let cluster = pkgs.nomad-workbench-for-profile {
       inherit profileName useCabalRun profiled;
     };
 
+    useCabalRun = false;
+
     inherit (cluster) backend profile;
 
     shellHook = { workbenchDevMode, useCabalRun, profiled, profileName, withMainnet }: ''
@@ -97,19 +99,14 @@ in project.shellFor {
   # These programs will be available inside the nix-shell.
   nativeBuildInputs = with pkgs; with haskellPackages; with cardanoNodePackages; [
     cardano-ping
-    cabalWrapped
     db-analyser
-    ghcid
-    haskellBuildUtils
     pkgs.graphviz
     graphmod
-    cabal-plan
     weeder
     nixWrapped
     pkgconfig
     profiteur
     profiterole
-    python3Packages.supervisor
     ghc-prof-flamegraph
     sqlite-interactive
     tmux
@@ -122,20 +119,13 @@ in project.shellFor {
     cluster.interactive-stop
     cluster.interactive-restart
   ] ++ lib.optional haveGlibcLocales pkgs.glibcLocales
-  ## Workbench's main script is called directly in dev mode.
-  ++ lib.optionals (!useCabalRun)
-    [
-      cardano-cli
-      cardano-node
-      cardano-topology
-      cardano-tracer
-      locli
-      tx-generator
-    ]
+  ++ lib.optionals (!useCabalRun) [cardano-topology cardano-cli locli]
+  ++ backend.extraShellPkgs
   ++ lib.optionals (!workbenchDevMode)
     [
       cluster.workbench.workbench
-    ];
+    ]
+    ;
 
 } // { inherit shellHook;
      }
