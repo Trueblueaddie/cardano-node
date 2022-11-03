@@ -4,7 +4,8 @@
 -- | Raw binary serialisation
 --
 module Cardano.Api.SerialiseRaw
-  ( SerialiseAsRawBytes(..)
+  ( RawBytesHexError(..)
+  , SerialiseAsRawBytes(..)
   , serialiseToRawBytesHex
   , deserialiseFromRawBytesHex
   , serialiseToRawBytesHexText
