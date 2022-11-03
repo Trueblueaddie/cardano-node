@@ -1,0 +1,11 @@
+package cardano-crypto-praos
+  flags: -external-libsodium-vrf
+
+package HsOpenSSL
+  extra-include-dirs: D:/a/_temp/msys64/mingw64/include
+  extra-lib-dirs: D:/a/_temp/msys64/mingw64/lib
+  flags: +use-pkg-config
+
+package secp256k1-haskell
+  extra-include-dirs: D:/a/_temp/msys64/mingw64/include
+  extra-lib-dirs: D:/a/_temp/msys64/mingw64/lib
