@@ -20,7 +20,7 @@ import qualified Data.Text.Encoding as Text
 import           Cardano.Api.Error (Error, displayError)
 import           Cardano.Api.HasTypeProxy
 
-class HasTypeProxy a => SerialiseAsRawBytes a where
+class (HasTypeProxy a, Typeable a) => SerialiseAsRawBytes a where
 
   serialiseToRawBytes :: a -> ByteString
 
@@ -39,6 +39,7 @@ data RawBytesHexError
       String -- ^ error message
   | RawBytesHexErrorRawBytesDecodeFail
       ByteString -- ^ original input
+      TypeRep    -- ^ expected type
   deriving (Show)
 
 instance Error RawBytesHexError where
@@ -46,14 +47,15 @@ instance Error RawBytesHexError where
     RawBytesHexErrorBase16DecodeFail input message ->
       "Expected Base16-encoded bytestring, but got " ++ show input ++ "; "
       ++ message
-    RawBytesHexErrorRawBytesDecodeFail input ->
-      "Failed to deserialise " ++ show input
-      -- TODO(2022-01-26, cblp) show expected output type
+    RawBytesHexErrorRawBytesDecodeFail input asType ->
+      "Failed to deserialise " ++ show input ++ " as " ++ (show asType)
 
 deserialiseFromRawBytesHex
   :: SerialiseAsRawBytes a
   => AsType a -> ByteString -> Either RawBytesHexError a
 deserialiseFromRawBytesHex proxy hex = do
   raw <- first (RawBytesHexErrorBase16DecodeFail hex) $ Base16.decode hex
-  maybe (Left $ RawBytesHexErrorRawBytesDecodeFail hex) Right $
+  maybe (Left $ RawBytesHexErrorRawBytesDecodeFail hex $ typeRep proxy) Right $
     deserialiseFromRawBytes proxy raw
+
+
