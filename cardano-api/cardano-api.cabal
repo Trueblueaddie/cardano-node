@@ -134,6 +134,7 @@ library
                       , formatting
                       , iproute
                       , memory
+                      , microlens
                       , network
                       , nothunks
                       , optparse-applicative-fork

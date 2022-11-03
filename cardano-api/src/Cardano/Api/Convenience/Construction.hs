@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 -- | Convenience transaction construction functions
 --
 module Cardano.Api.Convenience.Construction (
@@ -33,13 +34,20 @@ import           Cardano.Api.Query
 import           Cardano.Api.Tx
 import           Cardano.Api.TxBody
 import           Cardano.Api.Utils
+import           Cardano.Ledger.Shelley.TxBody (ShelleyEraTxBody, EraIndependentTxBody)
+import           Cardano.Ledger.SafeHash (HashAnnotated)
+import           Cardano.Ledger.Crypto (StandardCrypto)
+import qualified Cardano.Ledger.Core as Ledger
 
 -- | Construct a balanced transaction.
 -- See Cardano.Api.Convenience.Query.queryStateForBalancedTx for a
 -- convenient way of querying the node to get the required arguements
 -- for constructBalancedTx.
 constructBalancedTx
-  :: IsShelleyBasedEra era
+  :: (IsShelleyBasedEra era
+     , ShelleyEraTxBody (ShelleyLedgerEra era)
+     , HashAnnotated (Ledger.TxBody (ShelleyLedgerEra era)) EraIndependentTxBody StandardCrypto
+     )
   => EraInMode era CardanoMode
   -> TxBodyContent BuildTx era
   -> AddressInEra era -- ^ Change address

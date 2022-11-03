@@ -168,6 +168,7 @@ import qualified Ouroboros.Network.Block
 import qualified Ouroboros.Network.Protocol.ChainSync.Client as CS
 import qualified Ouroboros.Network.Protocol.ChainSync.ClientPipelined as CSP
 import           Ouroboros.Network.Protocol.ChainSync.PipelineDecision
+import Cardano.Ledger.SafeHash (HashAnnotated)
 
 data InitialLedgerStateError
   = ILSEConfigFile Text
@@ -1313,7 +1314,8 @@ instance Error LeadershipError where
 
 nextEpochEligibleLeadershipSlots
   :: forall era.
-     HasField "_d" (Core.PParams (ShelleyLedgerEra era)) UnitInterval
+     ( HasField "_d" (Core.PParams (ShelleyLedgerEra era)) UnitInterval
+     , HashAnnotated (Core.TxBody (ShelleyLedgerEra era)) Core.EraIndependentTxBody (Ledger.Crypto (ShelleyLedgerEra era)))
   => Ledger.Era (ShelleyLedgerEra era)
   => Share (Core.TxOut (ShelleyLedgerEra era)) ~ Interns (Shelley.Spec.Credential 'Shelley.Spec.Staking (Cardano.Ledger.Era.Crypto (ShelleyLedgerEra era)))
   => FromCBOR (Consensus.ChainDepState (Api.ConsensusProtocol era))
@@ -1501,6 +1503,7 @@ currentEpochEligibleLeadershipSlots :: forall era ledgerera. ()
  -- => Ledger.Crypto ledgerera ~ Shelley.StandardCrypto
   => FromCBOR (Consensus.ChainDepState (Api.ConsensusProtocol era))
   -- => Consensus.ChainDepState (ConsensusProtocol era) ~ Consensus.ChainDepState (ConsensusProtocol era)
+  => HashAnnotated (Core.TxBody ledgerera) Core.EraIndependentTxBody (Ledger.Crypto ledgerera)
   => ShelleyBasedEra era
   -> ShelleyGenesis Shelley.StandardShelley
   -> EpochInfo (Either Text)
