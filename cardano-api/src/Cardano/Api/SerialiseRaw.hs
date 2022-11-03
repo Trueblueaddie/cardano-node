@@ -20,7 +20,6 @@ import qualified Data.Text.Encoding as Text
 import           Cardano.Api.Error (Error, displayError)
 import           Cardano.Api.HasTypeProxy
 
-
 class HasTypeProxy a => SerialiseAsRawBytes a where
 
   serialiseToRawBytes :: a -> ByteString
@@ -33,13 +32,13 @@ serialiseToRawBytesHex = Base16.encode . serialiseToRawBytes
 serialiseToRawBytesHexText :: SerialiseAsRawBytes a => a -> Text
 serialiseToRawBytesHexText = Text.decodeUtf8 . serialiseToRawBytesHex
 
+-- | The errors that the pure 'SerialiseAsRawBytes' parsing\/decoding functions can return.
 data RawBytesHexError
   = RawBytesHexErrorBase16DecodeFail
       ByteString -- ^ original input
       String -- ^ error message
   | RawBytesHexErrorRawBytesDecodeFail
       ByteString -- ^ original input
-      -- TODO(2022-01-26, cblp) TypeRep -- ^ output type proxy
   deriving (Show)
 
 instance Error RawBytesHexError where
