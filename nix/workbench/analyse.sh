@@ -1,33 +1,29 @@
 usage_analyse() {
      usage "analyse" "Analyse cluster runs" <<EOF
-    $(helpcmd compare RUN_NAME..)    Produce a comparative analysis between specified runs, in a new
-     $(blk cmp)                    run directory.  An .ede template will be provided to enable a later
-                            $(red analyse) $(yellow recompare) run.
+    $(helpcmd compare RUN_NAME..)     Produce a comparative analysis between specified runs, in a new
+     $(blk cmp)                     run directory.  A builtin .ede template will be used,
+                             provided to enable a later
+                             $(red analyse) $(yellow recompare) run.
 
-    $(helpcmd recompare RUN_NAME..)  Update an existing comparative analysis between specified runs,
-     $(blk recmp)                  using its .ede template as basis.
+    $(helpcmd recompare RUN_NAME..)   Update an existing comparative analysis between specified runs,
+     $(blk recmp)                   using its .ede template as basis.
 
-    $(helpcmd multi-run RUN-NAME..)  Standard analyses on a batch of runs, followed by a multi-run summary.
-     $(blk multi)
-    $(helpcmd multi-pattern RUN-NAME-PATTERN)
-     $(blk multipat mp)          Same as $(yellow multi), but the runs are specified by shell-wildcard -enabled
-                            name patterns.
+    $(helpcmd variance RUN-NAME..)
+     $(blk var)                   Variance analyses on a set of runs.
 
-    $(helpcmd multi-run-summary RUN-NAME..)
-     $(blk multi-summary summary sum) Summarise results of multiple runs: results in \$global_rundir
 
     $(helpcmd full RUN-NAME..)
-     $(blk standard std)    Standard batch of analyses: block-propagation, and machine-timeline
+     $(blk standard std)          Standard batch of analyses: block-propagation, and machine-timeline
 
-    $(helpcmd call RUN-NAME OPS..)   Execute 'locli' "uops" on the specified run
+    $(helpcmd call RUN-NAME OPS..)    Execute 'locli' "uops" on the specified run
 
     $(helpcmd traces-frequencies LOGFILENAME)
-     $(blk trace-freq freq)          Classify trace messages by namespace frequency.
-                                       Output will be stored in a filename derived from argument.
+     $(blk trace-freq freq)       Classify trace messages by namespace frequency.
+                                    Output will be stored in a filename derived from argument.
 
     $(helpcmd chain-rejecta-reasons LOGFILENAME)
-     $(blk chain-rejecta rejecta)    Dump chain rejecta block timeline.
-                                       Note that only chain filter tags are printed
+     $(blk chain-rejecta rejecta) Dump chain rejecta block timeline.
+                                    Note that only chain filter tags are printed
 
   $(red analyse) $(blue options):
 
@@ -61,7 +57,8 @@ analysis_allowed_loanys=(
 analyse() {
 local filters=() filter_exprs=() filter_reasons= chain_errors= aws= sargs=() unfiltered= perf_omit_hosts=()
 local dump_logobjects= dump_machviews= dump_chain= dump_slots_raw= dump_slots=
-local multi_aspect='--inter-cdf' rtsmode= locli_args=()
+local multi_aspect='--inter-cdf' rtsmode=
+locli_args=()
 
 progress "analyse" "args:  $(yellow $*)"
 while test $# -gt 0
@@ -89,21 +86,6 @@ do case "$1" in
        --trace )                   sargs+=($1);    set -x;;
        * ) break;; esac; shift; done
 
-if test -z "$rtsmode"
-then if curl --connect-timeout 0.5 http://169.254.169.254/latest/meta-data >/dev/null 2>&1
-     then rtsmode='aws'
-     else rtsmode='hipar'; fi; fi
-
-echo "{ \"rtsmode\": \"$rtsmode\" }"
-case "$rtsmode" in
-    aws )   ## Work around the odd parallelism bug killing performance on AWS:
-            locli_args+=(+RTS -N1 -A128M -RTS);;
-    lomem ) locli_args+=(+RTS -N3 -A8M -RTS);;
-    hipar ) locli_args+=();;
-    * )     fail "unknown rtsmode: $rtsmode";;
-esac
-
-
 local op=${1:-standard}; if test $# != 0; then shift; fi
 
 case "$op" in
@@ -111,27 +93,16 @@ case "$op" in
     compare | cmp )
         local baseline=$1; shift
         progress "analysis" "$(white comparing) $(colorise $*) $(plain against baseline) $(white $baseline)"
-        analyse "${sargs[@]}" multi-call "$baseline $*" 'compare'
+        analyse "${sargs[@]}" multi-call 'compare' "$baseline $*" 'compare'
         ;;
 
     recompare | recmp )
         local baseline=$1; shift
         progress "analysis" "$(white regenerating comparison) of $(colorise $*) $(plain against baseline) $(white $baseline)"
-        analyse "${sargs[@]}" multi-call "$baseline $*" 'update'
+        analyse "${sargs[@]}" multi-call 'compare' "$baseline $*" 'update'
         ;;
 
-    multi-run | multi )
-        progress "analysis" "$(white multi-summary) on runs: $(colorise $*)"
-
-        analyse "${sargs[@]}" full "$*"
-        analyse "${sargs[@]}" multi-run-summary "$*"
-        ;;
-
-    multi-run-pattern | multi-pattern | multipat | mp )
-        analyse "${sargs[@]}" multi-run $(run list-pattern $1)
-        ;;
-
-    multi-run-summary | multi-summary | summary | sum )
+    variance | var )
         local script=(
             read-clusterperfs
             compute-multi-clusterperf
@@ -149,8 +120,8 @@ case "$op" in
             multi-propagation-gnuplot
             multi-propagation-full
         )
-        verbose "analysis" "$(white multi-summary), calling script: $(colorise ${script[*]})"
-        analyse "${sargs[@]}" multi-call "$*" ${script[*]}
+        verbose "analysis" "$(white variance), calling script: $(colorise ${script[*]})"
+        analyse "${sargs[@]}" multi-call 'variance' "$*" ${script[*]}
         ;;
 
     rerender | render )
@@ -332,10 +303,10 @@ case "$op" in
                --host ) host=$2; shift;;
                * ) break;; esac; shift; done
 
-        local name=${1:?$usage}; shift
-        local dir=$(run get "$name")
+        local run=${1:?$usage}; shift
+        local dir=$(run get "$run")
         local adir=$dir/analysis
-        test -n "$dir" -a -d "$adir" || fail "malformed run: $name"
+        test -n "$dir" -a -d "$adir" || fail "malformed run: $run"
 
         local logfiles=(
             $(if test -z "$host"
@@ -391,8 +362,8 @@ case "$op" in
         for v in "${vn[@]}"
         do eval ops_final+=($v); done
 
-        verbose "analysis | locli" "$(with_color reset ${locli_args[@]}) $(colorise "${ops_final[@]}")"
-        time locli "${locli_args[@]}" "${ops_final[@]}"
+        call_locli "$rtsmode" "${ops_final[@]}"
+
         progress "analyse" "prettifying JSON data.."
         time \
           json_compact_prettify $(ls $adir/*.json |
@@ -401,11 +372,13 @@ case "$op" in
                                                -e 'chain-rejecta.json'  \
                                                -e 'chain.json'
                                  )
+        progress "output" "run:  $(white $run)  subdir:  $(yellow analysis)"
         ;;
 
     multi-call )
-        local usage="USAGE: wb analyse $op \"RUN-NAMES..\" OPS.."
+        local usage="USAGE: wb analyse $op SUFFIX \"RUN-NAMES..\" OPS.."
 
+        local suffix=${1:?$usage}; shift
         local runs=${1:?$usage}; shift
         local dirs=(  $(for run  in $runs;       do run get "$run"; echo; done))
         local adirs=( $(for dir  in ${dirs[*]};  do echo $dir/analysis; done))
@@ -417,7 +390,7 @@ case "$op" in
                                   --perf            ${adir}/clusterperf.json        \
                                   --prop            ${adir}/blockprop.json
                           done))
-        local run=$(for dir in ${dirs[*]}; do basename $dir; done | sort -r | head -n1 | cut -d. -f1-2)_multirun
+        local run=$(for dir in ${dirs[*]}; do basename $dir; done | sort -r | head -n1 | cut -d. -f1-2)_$suffix
         local adir=$(run get-rundir)/$run
 
         mkdir -p "$adir"
@@ -443,8 +416,9 @@ case "$op" in
         vg=(${vf[*]/#update/  'compare' --ede nix/workbench/ede --report $adir/report-$run.org ${compares[*]} --template $adir/report-$run.ede })
         local ops_final=(${vg[*]})
 
-        progress "analysis | locli" "$(with_color reset ${locli_rts_args[@]}) $(colorise "${ops_final[@]}")"
-        time locli "${locli_rts_args[@]}" "${ops_final[@]}"
+        call_locli "$rtsmode" "${ops_final[@]}"
+
+        progress "output" "run:  $(white $run)"
         ;;
 
     prepare | prep )
@@ -542,6 +516,28 @@ case "$op" in
 
     * ) progress "analyse" "unexpected 'analyse' subop:  $(red $op)"
         usage_analyse;; esac
+}
+
+call_locli() {
+    local rtsmode="$1"; shift
+    local args=("$@")
+
+    if test -z "$rtsmode"
+    then if curl --connect-timeout 0.5 http://169.254.169.254/latest/meta-data >/dev/null 2>&1
+         then rtsmode='aws'
+         else rtsmode='hipar'; fi; fi
+
+    echo "{ \"rtsmode\": \"$rtsmode\" }"
+    case "$rtsmode" in
+        aws )   ## Work around the odd parallelism bug killing performance on AWS:
+                locli_args+=(+RTS -N1 -A128M -RTS);;
+        lomem ) locli_args+=(+RTS -N3 -A8M -RTS);;
+        hipar ) locli_args+=();;
+        * )     fail "unknown rtsmode: $rtsmode";;
+    esac
+
+    verbose "analysis | locli" "$(with_color reset ${locli_args[@]}) $(colorise "${ops_final[@]}")"
+    time locli "${locli_args[@]}" "${args[@]}"
 }
 
 num_jobs="\j"
